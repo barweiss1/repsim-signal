@@ -1,0 +1,64 @@
+# Unified ReSi runtime requirements for nvcr.io/nvidia/pytorch:24.06-py3.
+# Keep the NGC-provided torch/torchvision stack intact. Do not install
+# torch, torchvision, torchaudio, or torcheval from public wheels in this image.
+
+# Core numerical stack
+numpy
+scipy>=1.7.0
+pandas>=1.3.0
+scikit-learn>=1.0.0
+
+# PyG version compatible with the PyTorch 2.4 stack in the NGC 24.06 image.
+torch_geometric==2.5.3
+torchmetrics>=0.11.0,<1.0.0
+
+# ReSi benchmark runtime
+pytorch-lightning==1.9.5
+lightning-bolts
+pyDeprecate
+pyarrow>=14.0.1
+ogb
+six
+tensorboard
+tensorboardX
+geometry-score @ git+https://github.com/KhrulkovV/geometry-score
+msid @ git+https://github.com/xgfs/imd
+rtd @ git+https://github.com/IlyaTrofimov/RTD.git
+gudhi
+
+# Vision and plotting
+matplotlib
+seaborn
+plotly
+opencv-python-headless==4.10.0.84
+scikit-image
+Pillow
+albumentations==1.3.1
+timm
+medmnist
+
+# NLP/language tooling
+datasets>=2.4.0
+transformers>=4.30.0
+accelerate>=0.20.0
+sentencepiece
+protobuf
+bitsandbytes
+huggingface_hub>=0.16.0
+tokenizers>=0.13.0,<0.20.0
+evaluate>=0.4.0
+jsonlines>=3.0.0
+textattack
+
+# Experiment/config utilities
+cmake<4
+tqdm
+PyYAML>=5.4.1
+hydra-core>=1.2.0,<1.4.0
+loguru
+gitpython
+xmltodict
+chardet<6
+openpyxl
+einops
+Cython

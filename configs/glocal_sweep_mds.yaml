@@ -1,0 +1,91 @@
+version: 1
+run_name: glocal_parameter_sweep
+input_root: data/glocal/features/glocal_sweep
+stages: [compute, plot]
+
+selection:
+  models: all
+  datasets: all
+  batches: all
+  lambda: all
+  alpha: all
+  tau: all
+
+lambda_splits: [0.001, 0.01, 0.1, 1.0]
+
+metrics:
+  - id: cka_linear
+    name: cka
+    mode: fixed
+    kwargs: {}
+    grid: null
+  - id: cka_rbf_sigma_05
+    name: cka_rbf
+    mode: fixed
+    kwargs: {rbf_sigma: 0.5}
+    grid: null
+  - id: cka_rbf_sigma_02
+    name: cka_rbf
+    mode: fixed
+    kwargs: {rbf_sigma: 0.2}
+    grid: null
+  - id: mutual_knn_k10
+    name: mutual_knn
+    mode: fixed
+    kwargs: {topk: 10}
+    grid: null
+  - id: cka_rbf
+    name: cka_rbf
+    mode: signal
+    kwargs: {}
+    grid: {min: 0.1, max: 10.0, num: 30, scale: log}
+  - id: rbf_uka
+    name: rbf_uka
+    mode: signal
+    kwargs: {}
+    grid: {min: 0.1, max: 10.0, num: 30, scale: log}
+  - id: rbf_rwka
+    name: rbf_rwka
+    mode: signal
+    kwargs: {}
+    grid: {min: 0.1, max: 10.0, num: 30, scale: log}
+  - id: rbf_degree_crwka
+    name: rbf_degree_crwka
+    mode: signal
+    kwargs: {}
+    grid: {min: 0.1, max: 10.0, num: 30, scale: log}
+  - id: rbf_crwka
+    name: rbf_crwka
+    mode: signal
+    kwargs: {}
+    grid: {min: 0.1, max: 10.0, num: 30, scale: log}
+  - id: mutual_knn
+    name: mutual_knn
+    mode: signal
+    kwargs: {}
+    grid: {values: [3, 5, 10, 20, 50, 100, 200, 500]}
+  - id: mutual_knn_dist
+    name: mutual_knn_dist
+    mode: signal
+    kwargs: {}
+    grid: {values: [3, 5, 10, 20, 50, 100, 200, 500]}
+
+mds:
+  random_state: 42
+  n_init: 4
+  max_iter: 300
+  eps: 1.0e-6
+
+visualization:
+  dpi: 300
+  mds_3d_view:
+    elevation: 25
+    azimuth: -35
+
+outputs:
+  data_root: data/glocal/mds
+  figures_root: figures/glocal/mds
+
+execution:
+  recompute_scores: false
+  recompute_mds: false

@@ -1,0 +1,12 @@
+# Hard constraints for the NGC PyTorch 24.06 ReSi container.
+# These prevent pip from drifting away from the base stack that the image ships.
+
+numpy==1.24.4
+opencv-python-headless==4.10.0.84
+albumentations==1.3.1
+pandas<2.3
+pyarrow<15
+transformers<4.41
+datasets<2.15
+huggingface_hub<0.25
+protobuf<5

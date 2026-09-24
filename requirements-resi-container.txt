@@ -1,0 +1,5 @@
+# Compatibility alias for the Enroot NGC 24.06 ReSi runtime.
+# Use the explicit file in new scripts:
+#   requirements-resi-container-ngc24.06.txt
+
+-r requirements-resi-container-ngc24.06.txt

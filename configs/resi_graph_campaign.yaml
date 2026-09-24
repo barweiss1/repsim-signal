@@ -1,0 +1,167 @@
+version: 1
+domain: graphs
+run_root: data/resi/runs
+analysis_root: figures/resi
+quality_measures: [AUPRC, violation_rate, correlation, pearsonr, spearmanr, kendalltau]
+measures:
+  - MutualKNNTop10
+  - CKNNATop10
+  - sRWKArbfSigma05
+  - dRWKArbfSigma05
+  - CKArbfSigma05
+  - CKArbfSigma02
+  - sRWKArbfAUC
+  - CKArbfAUC
+  - UKArbfAUC
+  - dRWKArbfAUC
+  - mcRWKArbfAUC
+measure_sweeps:
+  sRWKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+  CKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+  UKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+  dRWKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+  mcRWKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+benchmarks:
+  - id: augmentation_test
+    dataset: ogbn-arxiv
+    base_config: configs/graphs/graphs_augmentation_test_ogbn-arxiv.yaml
+    architectures: [GCN, GraphSAGE, GAT]
+    baselines:
+      - path: graphs/augmentation_test_group_separation_ogbn-arxiv.parquet
+        name: archive
+      - path: graphs/results_augmentation_test_ogbn-arxiv.parquet
+        name: supplemental
+  - id: augmentation_test
+    dataset: cora
+    base_config: configs/graphs/graphs_augmentation_test_cora.yaml
+    architectures: [GCN, GraphSAGE, GAT]
+    # PGNN is cora-only and has no Augmentation_* checkpoints, so it joins
+    # the other four cora benchmarks but not this one.
+    baselines:
+      - path: graphs/augmentation_test_group_separation_cora.parquet
+        name: archive
+      - path: graphs/results_augmentation_test_cora.parquet
+        name: supplemental
+  - id: augmentation_test
+    dataset: flickr
+    base_config: configs/graphs/graphs_augmentation_test_flickr.yaml
+    architectures: [GCN, GraphSAGE, GAT]
+    baselines:
+      - path: graphs/augmentation_test_group_separation_flickr.parquet
+        name: archive
+      - path: graphs/results_augmentation_test_flickr.parquet
+        name: supplemental
+  - id: label_test
+    dataset: ogbn-arxiv
+    base_config: configs/graphs/graphs_label_test_ogbn-arxiv.yaml
+    architectures: [GCN, GraphSAGE, GAT]
+    baselines:
+      - path: graphs/label_test_group_separation_ogbn-arxiv.parquet
+        name: archive
+      - path: graphs/results_label_test_ogbn-arxiv.parquet
+        name: supplemental
+  - id: label_test
+    dataset: cora
+    base_config: configs/graphs/graphs_label_test_cora.yaml
+    architectures: [GCN, GraphSAGE, GAT, PGNN]
+    baselines:
+      - path: graphs/label_test_group_separation_cora.parquet
+        name: archive
+      - path: graphs/results_label_test_cora.parquet
+        name: supplemental
+      - path: mfbase_pgnn_label_test_cora.parquet
+        name: recreated-pgnn
+        architectures: [PGNN]
+  - id: label_test
+    dataset: flickr
+    base_config: configs/graphs/graphs_label_test_flickr.yaml
+    architectures: [GCN, GraphSAGE, GAT]
+    baselines:
+      - path: graphs/label_test_group_separation_flickr.parquet
+        name: archive
+      - path: graphs/results_label_test_flickr.parquet
+        name: supplemental
+  - id: layer_test
+    dataset: ogbn-arxiv
+    base_config: configs/graphs/graphs_layer_test_ogbn-arxiv.yaml
+    architectures: [GCN, GraphSAGE, GAT]
+    cache_to_mem: false
+    baselines:
+      - path: graphs/layer_test_monotonicity_ogbn-arxiv.parquet
+        name: archive
+      - path: graphs/results_layer_test_ogbn-arxiv.parquet
+        name: supplemental
+  - id: layer_test
+    dataset: cora
+    base_config: configs/graphs/graphs_layer_test_cora.yaml
+    architectures: [GCN, GraphSAGE, GAT, PGNN]
+    cache_to_mem: false
+    baselines:
+      - path: graphs/layer_test_monotonicity_cora.parquet
+        name: archive
+      - path: graphs/results_layer_test_cora.parquet
+        name: supplemental
+      - path: mfbase_pgnn_layer_test_cora.parquet
+        name: recreated-pgnn
+        architectures: [PGNN]
+  - id: layer_test
+    dataset: flickr
+    base_config: configs/graphs/graphs_layer_test_flickr.yaml
+    architectures: [GCN, GraphSAGE, GAT]
+    cache_to_mem: false
+    baselines:
+      - path: graphs/layer_test_monotonicity_flickr.parquet
+        name: archive
+      - path: graphs/results_layer_test_flickr.parquet
+        name: supplemental
+  - id: output_correlation_test
+    dataset: ogbn-arxiv
+    base_config: configs/graphs/graphs_output_correlation_test_ogbn-arxiv.yaml
+    architectures: [GCN, GraphSAGE, GAT]
+    baselines:
+      - path: graphs/results_output_correlation_test_ogbn-arxiv.parquet
+  - id: output_correlation_test
+    dataset: cora
+    base_config: configs/graphs/graphs_output_correlation_test_cora.yaml
+    architectures: [GCN, GraphSAGE, GAT, PGNN]
+    baselines:
+      - path: graphs/results_output_correlation_test_cora.parquet
+      - path: mfbase_pgnn_output_correlation_test_cora.parquet
+        name: recreated-pgnn
+        architectures: [PGNN]
+  - id: output_correlation_test
+    dataset: flickr
+    base_config: configs/graphs/graphs_output_correlation_test_flickr.yaml
+    architectures: [GCN, GraphSAGE, GAT]
+    baselines:
+      - path: graphs/results_output_correlation_test_flickr.parquet
+  - id: shortcut_test
+    dataset: ogbn-arxiv
+    base_config: configs/graphs/graphs_shortcut_test_ogbn-arxiv.yaml
+    architectures: [GCN, GraphSAGE, GAT]
+    baselines:
+      - path: graphs/shortcut_test_group_separation_ogbn-arxiv.parquet
+        name: archive
+      - path: graphs/results_shortcut_test_ogbn-arxiv.parquet
+        name: supplemental
+  - id: shortcut_test
+    dataset: cora
+    base_config: configs/graphs/graphs_shortcut_test_cora.yaml
+    architectures: [GCN, GraphSAGE, GAT, PGNN]
+    baselines:
+      - path: graphs/shortcut_test_group_separation_cora.parquet
+        name: archive
+      - path: graphs/results_shortcut_test_cora.parquet
+        name: supplemental
+      - path: mfbase_pgnn_shortcut_test_cora.parquet
+        name: recreated-pgnn
+        architectures: [PGNN]
+  - id: shortcut_test
+    dataset: flickr
+    base_config: configs/graphs/graphs_shortcut_test_flickr.yaml
+    architectures: [GCN, GraphSAGE, GAT]
+    baselines:
+      - path: graphs/shortcut_test_group_separation_flickr.parquet
+        name: archive
+      - path: graphs/results_shortcut_test_flickr.parquet
+        name: supplemental

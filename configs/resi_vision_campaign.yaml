@@ -1,0 +1,312 @@
+version: 1
+domain: vision
+run_root: data/resi/runs
+analysis_root: figures/resi
+quality_measures: [AUPRC, violation_rate, correlation, pearsonr, spearmanr, kendalltau]
+# The softmax variants are intentionally excluded to preserve the established vision suite.
+measures:
+  - MutualKNNTop10
+  - CKNNATop10
+  - sRWKArbfSigma05
+  - dRWKArbfSigma05
+  - CKArbfSigma05
+  - CKArbfSigma02
+  - sRWKArbfAUC
+  - CKArbfAUC
+  - UKArbfAUC
+  - dRWKArbfAUC
+  - mcRWKArbfAUC
+measure_sweeps:
+  sRWKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+  CKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+  UKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+  dRWKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+  mcRWKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+known_missing_models:
+  - benchmark: randomlabel
+    dataset: ImageNet100
+    architecture: ViT_L32
+    setting: Randomlabel
+    train_dataset: RandomLabel_100_IN100_DataModule
+    seed: 4
+    reason: Upstream ReSi checkpoint produces entirely non-finite final-layer representations.
+  - benchmark: randomlabel
+    dataset: ImageNet100
+    architecture: ViT_B32
+    setting: Randomlabel
+    train_dataset: RandomLabel_100_IN100_DataModule
+    seed: 0
+    reason: >-
+      Upstream ReSi checkpoint collapses its final-layer representations: over
+      half of all pairwise distances sit at one float32 quantization step, so no
+      RBF bandwidth is resolvable and every kernel measure fails. Neighbor
+      measures still return values, but only because exact ties are broken by
+      index order, which makes those values an artifact rather than geometry.
+benchmarks:
+  - id: augmentation
+    dataset: ImageNet100
+    base_config: configs/vision/IN100_augmentation.yaml
+    architectures: [ViT_L32, ViT_B32, ResNet18, ResNet34, ResNet101, VGG11, VGG19]
+    baselines:
+      - path: vision/in100_augment_vitl32.parquet
+        architectures: [ViT_L32]
+        name: vitl32
+      - path: vision/in100_augment_vitb32.parquet
+        architectures: [ViT_B32]
+        name: vitb32
+      - path: vision/in100_augment_resnet18.parquet
+        architectures: [ResNet18]
+        name: resnet18
+      - path: vision/in100_augment_resnet34.parquet
+        architectures: [ResNet34]
+        name: resnet34
+      - path: vision/in100_augment_resnet101.parquet
+        architectures: [ResNet101]
+        name: resnet101
+      - path: vision/in100_augment_vgg11.parquet
+        architectures: [VGG11]
+        name: vgg11
+      - path: vision/in100_augment_vgg19.parquet
+        architectures: [VGG19]
+        name: vgg19
+  - id: randomlabel
+    dataset: ImageNet100
+    base_config: configs/vision/IN100_randomlabel.yaml
+    architectures: [ViT_L32, ViT_B32, ResNet18, ResNet34, ResNet101, VGG11, VGG19]
+    baselines:
+      - path: vision/in100_randomlabel_vitl32.parquet
+        architectures: [ViT_L32]
+        name: vitl32
+      - path: vision/in100_randomlabel_vitb32.parquet
+        architectures: [ViT_B32]
+        name: vitb32
+      - path: vision/in100_randomlabel_resnet18.parquet
+        architectures: [ResNet18]
+        name: resnet18
+      - path: vision/in100_randomlabel_resnet34.parquet
+        architectures: [ResNet34]
+        name: resnet34
+      - path: vision/in100_randomlabel_resnet101.parquet
+        architectures: [ResNet101]
+        name: resnet101
+      - path: vision/in100_randomlabel_vgg11.parquet
+        architectures: [VGG11]
+        name: vgg11
+      - path: vision/in100_randomlabel_vgg19.parquet
+        architectures: [VGG19]
+        name: vgg19
+  - id: shortcut
+    dataset: ImageNet100
+    base_config: configs/vision/IN100_shortcut.yaml
+    architectures: [ViT_L32, ViT_B32, ResNet18, ResNet34, ResNet101, VGG11, VGG19]
+    baselines:
+      - path: vision/in100_shortcut_vitl32.parquet
+        architectures: [ViT_L32]
+        name: vitl32
+      - path: vision/in100_shortcut_vitb32.parquet
+        architectures: [ViT_B32]
+        name: vitb32
+      - path: vision/in100_shortcut_resnet18.parquet
+        architectures: [ResNet18]
+        name: resnet18
+      - path: vision/in100_shortcut_resnet34.parquet
+        architectures: [ResNet34]
+        name: resnet34
+      - path: vision/in100_shortcut_resnet101.parquet
+        architectures: [ResNet101]
+        name: resnet101
+      - path: vision/in100_shortcut_vgg11.parquet
+        architectures: [VGG11]
+        name: vgg11
+      - path: vision/in100_shortcut_vgg19.parquet
+        architectures: [VGG19]
+        name: vgg19
+  - id: monotonicity
+    dataset: ImageNet100
+    base_config: configs/vision/IN100_monotonicity.yaml
+    architectures: [ViT_L32, ViT_B32, ResNet18, ResNet34, ResNet101, VGG11, VGG19]
+    cache_to_mem: false
+    baselines:
+      - path: vision/in100_monotonicity_vitl32.parquet
+        architectures: [ViT_L32]
+        name: vitl32
+      - path: vision/in100_monotonicity_vitb32.parquet
+        architectures: [ViT_B32]
+        name: vitb32
+      - path: vision/in100_monotonicity_resnet18.parquet
+        architectures: [ResNet18]
+        name: resnet18
+      - path: vision/in100_monotonicity_resnet34.parquet
+        architectures: [ResNet34]
+        name: resnet34
+      - path: vision/in100_monotonicity_resnet101.parquet
+        architectures: [ResNet101]
+        name: resnet101
+      - path: vision/in100_monotonicity_vgg11.parquet
+        architectures: [VGG11]
+        name: vgg11
+      - path: vision/in100_monotonicity_vgg19.parquet
+        architectures: [VGG19]
+        name: vgg19
+  - id: accoutput
+    dataset: ImageNet100
+    base_config: configs/vision/IN100_accoutput.yaml
+    architectures: [ViT_L32, ViT_B32, ResNet18, ResNet34, ResNet101, VGG11, VGG19]
+    baselines:
+      - path: vision/in100_output_vitl32.parquet
+        architectures: [ViT_L32]
+        name: vitl32
+      - path: vision/in100_output_vitb32.parquet
+        architectures: [ViT_B32]
+        name: vitb32
+      - path: vision/in100_output_resnet18.parquet
+        architectures: [ResNet18]
+        name: resnet18
+      - path: vision/in100_output_resnet34.parquet
+        architectures: [ResNet34]
+        name: resnet34
+      - path: vision/in100_output_resnet101.parquet
+        architectures: [ResNet101]
+        name: resnet101
+      - path: vision/in100_output_vgg11.parquet
+        architectures: [VGG11]
+        name: vgg11
+      - path: vision/in100_output_vgg19.parquet
+        architectures: [VGG19]
+        name: vgg19
+  # CIFAR100 entries below reuse the same manifold measures/sweep as IN100.
+  # No archived baselines are attached yet -- verify whether ReSi baseline
+  # parquets for CIFAR100 actually exist under $REP_SIM/results/vision/
+  # before assuming these can be compared against the standard 24 measures
+  # (see the analogous PGNN baseline-coverage check).
+  # Architecture lists mirror each ReSi configs/vision/c100/C100_*.yaml file
+  # exactly -- augmentation notably has no ViT checkpoints, unlike the rest.
+  - id: augmentation
+    dataset: CIFAR100
+    base_config: configs/vision/c100/C100_augmentation.yaml
+    architectures: [ResNet18, ResNet34, ResNet101, VGG11, VGG19]
+    baselines:
+      - path: mfbase_cifar_augmentation_resnet18.parquet
+        name: recreated-resnet18
+        architectures: [ResNet18]
+      - path: mfbase_cifar_augmentation_resnet34.parquet
+        name: recreated-resnet34
+        architectures: [ResNet34]
+      - path: mfbase_cifar_augmentation_resnet101.parquet
+        name: recreated-resnet101
+        architectures: [ResNet101]
+      - path: mfbase_cifar_augmentation_vgg11.parquet
+        name: recreated-vgg11
+        architectures: [VGG11]
+      - path: mfbase_cifar_augmentation_vgg19.parquet
+        name: recreated-vgg19
+        architectures: [VGG19]
+  - id: randomlabel
+    dataset: CIFAR100
+    base_config: configs/vision/c100/C100_randomlabel.yaml
+    architectures: [ViT_L32, ViT_B32, ResNet18, ResNet34, ResNet101, VGG11, VGG19]
+    baselines:
+      - path: mfbase_cifar_randomlabel_vitl32.parquet
+        name: recreated-vitl32
+        architectures: [ViT_L32]
+      - path: mfbase_cifar_randomlabel_vitb32.parquet
+        name: recreated-vitb32
+        architectures: [ViT_B32]
+      - path: mfbase_cifar_randomlabel_resnet18.parquet
+        name: recreated-resnet18
+        architectures: [ResNet18]
+      - path: mfbase_cifar_randomlabel_resnet34.parquet
+        name: recreated-resnet34
+        architectures: [ResNet34]
+      - path: mfbase_cifar_randomlabel_resnet101.parquet
+        name: recreated-resnet101
+        architectures: [ResNet101]
+      - path: mfbase_cifar_randomlabel_vgg11.parquet
+        name: recreated-vgg11
+        architectures: [VGG11]
+      - path: mfbase_cifar_randomlabel_vgg19.parquet
+        name: recreated-vgg19
+        architectures: [VGG19]
+  - id: shortcut
+    dataset: CIFAR100
+    base_config: configs/vision/c100/C100_shortcut.yaml
+    architectures: [ViT_L32, ViT_B32, ResNet18, ResNet34, ResNet101, VGG11, VGG19]
+    baselines:
+      - path: mfbase_cifar_shortcut_vitl32.parquet
+        name: recreated-vitl32
+        architectures: [ViT_L32]
+      - path: mfbase_cifar_shortcut_vitb32.parquet
+        name: recreated-vitb32
+        architectures: [ViT_B32]
+      - path: mfbase_cifar_shortcut_resnet18.parquet
+        name: recreated-resnet18
+        architectures: [ResNet18]
+      - path: mfbase_cifar_shortcut_resnet34.parquet
+        name: recreated-resnet34
+        architectures: [ResNet34]
+      - path: mfbase_cifar_shortcut_resnet101.parquet
+        name: recreated-resnet101
+        architectures: [ResNet101]
+      - path: mfbase_cifar_shortcut_vgg11.parquet
+        name: recreated-vgg11
+        architectures: [VGG11]
+      - path: mfbase_cifar_shortcut_vgg19.parquet
+        name: recreated-vgg19
+        architectures: [VGG19]
+  - id: monotonicity
+    dataset: CIFAR100
+    base_config: configs/vision/c100/C100_monotonicity.yaml
+    architectures: [ViT_L32, ViT_B32, ResNet18, ResNet34, ResNet101, VGG11, VGG19]
+    cache_to_mem: false
+    baselines:
+      - path: mfbase_cifar_monotonicity_vitl32.parquet
+        name: recreated-vitl32
+        architectures: [ViT_L32]
+      - path: mfbase_cifar_monotonicity_vitb32.parquet
+        name: recreated-vitb32
+        architectures: [ViT_B32]
+      - path: mfbase_cifar_monotonicity_resnet18.parquet
+        name: recreated-resnet18
+        architectures: [ResNet18]
+      - path: mfbase_cifar_monotonicity_resnet34.parquet
+        name: recreated-resnet34
+        architectures: [ResNet34]
+      - path: mfbase_cifar_monotonicity_resnet101.parquet
+        name: recreated-resnet101
+        architectures: [ResNet101]
+      - path: mfbase_cifar_monotonicity_vgg11.parquet
+        name: recreated-vgg11
+        architectures: [VGG11]
+      - path: mfbase_cifar_monotonicity_vgg19.parquet
+        name: recreated-vgg19
+        architectures: [VGG19]
+  - id: accoutput
+    dataset: CIFAR100
+    # No unified C100_accoutput.yaml exists upstream, only per-architecture
+    # files (C100_accoutput_resnet18.yaml etc). Any one works as base_config
+    # since the campaign always overwrites the architecture filter anyway;
+    # the other experiment settings are identical across the per-arch files.
+    base_config: configs/vision/c100/C100_accoutput_resnet18.yaml
+    architectures: [ViT_L32, ViT_B32, ResNet18, ResNet34, ResNet101, VGG11, VGG19]
+    baselines:
+      - path: mfbase_cifar_accoutput_vitl32.parquet
+        name: recreated-vitl32
+        architectures: [ViT_L32]
+      - path: mfbase_cifar_accoutput_vitb32.parquet
+        name: recreated-vitb32
+        architectures: [ViT_B32]
+      - path: mfbase_cifar_accoutput_resnet18.parquet
+        name: recreated-resnet18
+        architectures: [ResNet18]
+      - path: mfbase_cifar_accoutput_resnet34.parquet
+        name: recreated-resnet34
+        architectures: [ResNet34]
+      - path: mfbase_cifar_accoutput_resnet101.parquet
+        name: recreated-resnet101
+        architectures: [ResNet101]
+      - path: mfbase_cifar_accoutput_vgg11.parquet
+        name: recreated-vgg11
+        architectures: [VGG11]
+      - path: mfbase_cifar_accoutput_vgg19.parquet
+        name: recreated-vgg19
+        architectures: [VGG19]

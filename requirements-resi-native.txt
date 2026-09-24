@@ -1,0 +1,88 @@
+# ReSi runtime requirements for a native (non-container) install on a
+# SLURM cluster (see docs/resi_cluster.md). Unlike the NGC
+# container requirements files, this installs its own torch/torchvision/etc
+# stack via pip rather than relying on a pre-baked base image.
+#
+# Otherwise identical to requirements.txt, with one deliberate swap:
+# opencv-python -> opencv-python-headless. Compute/login nodes are often
+# headless servers with no display; the GUI-enabled opencv-python wheel
+# pulls in Qt/X11 dependencies that are unnecessary there and that the
+# container build already avoids for the same reason
+# (see build_resi_enroot_container.sh). Pair with
+# constraints-resi-native.txt to reproduce the same known-working version
+# matrix as the NGC container.
+
+# Core numerical stack
+numpy
+scipy
+pandas
+scikit-learn
+
+# Torch stack. ReSi pins torch==2.0.1 upstream, but this repo uses >=2.1.2.
+torch>=2.1.2
+torchvision
+torch_geometric
+torchmetrics
+torcheval
+
+# ReSi benchmark runtime
+pytorch-lightning==1.9.5
+lightning-bolts
+pyDeprecate
+pyarrow
+ogb
+six
+tensorboard
+tensorboardX
+geometry-score @ git+https://github.com/KhrulkovV/geometry-score
+msid @ git+https://github.com/xgfs/imd
+rtd @ git+https://github.com/IlyaTrofimov/RTD.git
+gudhi
+
+# Vision and plotting
+matplotlib
+seaborn
+plotly
+opencv-python-headless
+scikit-image
+imageio>=2.9.0
+medmnist
+albumentations
+Pillow
+timm
+
+# Language/model tooling
+datasets
+transformers
+accelerate
+sentencepiece
+protobuf
+bitsandbytes
+huggingface_hub
+tokenizers
+evaluate
+jsonlines
+textattack
+sentence_transformers
+
+# Experiment/config utilities
+cmake<4
+tqdm
+PyYAML>=5.4.1
+hydra-core
+loguru
+gitpython
+xmltodict
+chardet
+openpyxl
+einops
+Cython
+
+# Development and notebooks
+wheel
+pytest
+black==24.1.1
+pre-commit>=2.15.0
+ipykernel
+ipywidgets
+setuptools

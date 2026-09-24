@@ -1,0 +1,75 @@
+version: 1
+run_name: synthetic_permuted_gaussian_local
+stages: [generate, analyze]
+
+dataset:
+  n_points: 500
+  dim: 2
+  n_clusters: 9
+  seed: 42
+  balanced: false
+  center_sampling: hypersphere
+
+transform:
+  mode: modify_base
+
+base_transform:
+  n_permute: 0
+  cluster_mixing_probability: 0.0
+  noise_scale: 0.1
+
+grid:
+  cluster_mixing_probability:
+    min: 0.0
+    max: 0.5
+    num: 10
+  noise_scale:
+    min: 0.0
+    max: 0.5
+    num: 10
+  # n_permute:
+  #   values: [0, 2, 3, 4, 5]
+
+metrics:
+  fixed:
+    - id: cka_lin
+      name: cka
+      kwargs: {}
+    - id: cka_rbf_sigma_02
+      name: cka_rbf
+      kwargs: {rbf_sigma: 0.2}
+    - id: mutual_knn_dist_k10
+      name: mutual_knn_dist
+      kwargs: {topk: 10}
+  signals:
+    names: [cka_rbf, rbf_uka, rbf_rwka_symmetric, rbf_degree_crwka]
+    parameter: rbf_sigma
+    min: 0.01
+    max: 5.0
+    num: 30
+    scale: log
+    integration: average
+
+mds:
+  random_state: 42
+  n_init: 4
+  max_iter: 300
+  eps: 1.0e-6
+
+visualization:
+  encodings:
+    # color: n_permute
+    size: cluster_mixing_probability
+    opacity: noise_scale
+  include_base: true
+  legend_style: colorbar  #  colorbar, markers
+  dpi: 300
+
+outputs:
+  data_root: data/synthetic/sweep
+  figures_root: figures/synthetic/sweep
+
+execution:
+  overwrite_dataset: true
+  recompute_metrics: true
+  checkpoint_signals: true

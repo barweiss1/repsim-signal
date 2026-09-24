@@ -1,0 +1,74 @@
+# Core numerical stack
+numpy
+scipy
+pandas
+scikit-learn
+
+# Torch stack. ReSi pins torch==2.0.1 upstream, but this repo uses >=2.1.2.
+torch>=2.1.2
+torchvision
+torch_geometric
+torchmetrics
+torcheval
+
+# ReSi benchmark runtime
+pytorch-lightning==1.9.5
+lightning-bolts
+pyDeprecate
+pyarrow
+ogb
+six
+tensorboard
+tensorboardX
+geometry-score @ git+https://github.com/KhrulkovV/geometry-score
+msid @ git+https://github.com/xgfs/imd
+rtd @ git+https://github.com/IlyaTrofimov/RTD.git
+gudhi
+
+# Vision and plotting
+matplotlib
+seaborn
+plotly
+opencv-python
+scikit-image
+imageio>=2.9.0
+medmnist
+albumentations
+Pillow
+timm
+
+# Language/model tooling
+datasets
+transformers
+accelerate
+sentencepiece
+protobuf
+bitsandbytes
+huggingface_hub
+tokenizers
+evaluate
+jsonlines
+textattack
+sentence_transformers
+
+# Experiment/config utilities
+cmake<4
+tqdm
+PyYAML>=5.4.1
+hydra-core
+loguru
+gitpython
+xmltodict
+chardet
+openpyxl
+einops
+Cython
+
+# Development and notebooks
+wheel
+pytest
+black==24.1.1
+pre-commit>=2.15.0
+ipykernel
+ipywidgets
+setuptools

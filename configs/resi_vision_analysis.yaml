@@ -1,0 +1,146 @@
+# Reporting choices for the vision campaign analysis.
+#
+# Separate from resi_vision_campaign.yaml on purpose: the campaign says what
+# gets computed and is snapshotted by `prepare`, while this file says what to
+# report from results that already exist, and is meant to be edited while
+# looking at output.
+#
+#   python scripts/resi.py analyze \
+#     --campaign configs/resi_vision_campaign.yaml \
+#     --run-name <run> \
+#     --analysis-config configs/resi_vision_analysis.yaml
+#
+# `measures` and `exclude_measures` are mutually exclusive. Naming a measure
+# here that the results do not contain is an error, so an incomplete run fails
+# loudly instead of being ranked over a smaller field than intended.
+version: 1
+
+# Coverage thresholds. A measure that fails on part of the run is not a measure
+# that scored badly -- ranking happens within a case, so a measure absent from
+# the hard cases is simply never scored there, and its pooled mean comes from an
+# easier field than its competitors faced.
+#
+# max_nan_fraction: within one case, a measure whose NaN share exceeds this is
+#   dropped from that case. Without it, `dropna(how="any")` would drop those
+#   observations for every other measure too.
+# min_case_coverage: within a reporting scope (domain, benchmark, or task), a
+#   measure surviving fewer than this fraction of the scope's cases is dropped
+#   from that scope's ranking, plots, and tables.
+#
+# Every exclusion is printed and written to `measure_exclusions.csv` beside the
+# outputs it applied to. On the 2026-08 vision run these settings drop
+# LinearRegression -- wholly NaN for CIFAR100 VGG11/VGG19 in every benchmark and
+# for randomlabel on five ImageNet100 architectures, leaving it ranked on 180 of
+# 222 cases -- while all ten manifold measures sit at full coverage.
+#
+# min_case_coverage is 0.90 rather than 0.95 so that LinearRegression (0.795
+# here) is the only measure any domain drops on coverage. At 0.95 language also
+# lost SecondOrderCosineSimilarity for missing two cases out of 38 (0.947),
+# which is a rounding-level gap, not the materially-easier-field problem this
+# guard is for. Changing it changes the field size and therefore every rank in
+# the domain, so the analysis has to be re-run, not re-filtered.
+max_nan_fraction: 0.5
+min_case_coverage: 0.90
+
+measures:
+  # ReSi native measures. This is the reduced set the recreated baselines
+  # compute: IMDScore and RSMNormDifference are excluded because they are ~67%
+  # of baseline runtime, and PWCCA because it is missing from the graph archive
+  # entirely and heavily NaN in language. Listing only these keeps ImageNet100
+  # (which has all 24 archived) comparable with CIFAR100 (which has 9).
+  - AlignedCosineSimilarity
+  - CKA
+  - DistanceCorrelation
+  - JaccardSimilarity
+  - LinearRegression
+  - ProcrustesSizeAndShapeDistance
+  - RankSimilarity
+  - SVCCA
+  - SecondOrderCosineSimilarity
+  # Local manifold measures. A subset of the campaign's `measures` list: the
+  # fixed-sigma random-walk variants (sRWKArbfSigma05, dRWKArbfSigma05) are
+  # dropped in favour of their swept counterparts, which answer the same
+  # question without committing to one bandwidth, and mcRWKArbfAUC is dropped
+  # with them. CKArbfSigma05 is dropped too: its 0.5 multiplier was never
+  # derived from anything (see docs/resi_analysis_methods.md) and
+  # CKArbfSigma02 was added specifically to check it, so reporting both no
+  # longer earns its place once the check has been made. All four are still
+  # computed and still sit in the result parquets; restoring a line here
+  # brings one back with no recomputation. Every removal changes the field
+  # size, so it changes every rank in the domain -- the analysis has to be
+  # re-run, not re-filtered.
+  - MutualKNNTop10
+  - CKNNATop10
+  - CKArbfSigma02
+  - sRWKArbfAUC
+  - CKArbfAUC
+  - UKArbfAUC
+  - dRWKArbfAUC
+
+# Narrows the campaign's quality_measures; every name must be one the campaign
+# already declares. Omit the key to report all of them.
+#
+# The campaign computes the prediction-correlation experiment three ways --
+# pearsonr, spearmanr, kendalltau -- but ReSi reports only Spearman: both
+# published notebooks (`tables_and_plots.ipynb` and `appendix_tables.ipynb`)
+# drop the other two before ranking anything. Keeping them here does not merely
+# add columns. A ranking case is keyed on the quality measure, so three
+# correlations produce three cases where the paper has one, and prediction
+# correlation ends up carrying three times its published weight in every
+# aggregate that pools cases. The values are still computed and still sit in
+# the result parquets; this only decides what gets reported.
+#
+# `violation_rate` is reported and deliberately not ranked. Ranking uses the
+# three quality measures ReSi ranks on -- AUPRC, spearmanr, correlation -- and
+# that set is fixed in code (`analysis/config.RANKED_QUALITY_MEASURES`), not
+# here, because it is ReSi's choice rather than a per-domain one. Listing
+# `violation_rate` keeps the conformity-rate columns in the appendix tables,
+# the quality heatmaps, and the AUPRC-versus-violation scatter; it adds no
+# cases to any ranking. Every design-grounded test would otherwise contribute
+# two cases where a correlation test contributes one.
+quality_measures: [AUPRC, violation_rate, correlation, spearmanr]
+
+# Which within-case rank the summaries sort on and the boxplots draw.
+#   raw (default) -- the within-case rank itself, 1 = best. Directly readable
+#                    ("4th of 16") and what ReSi's own published figures and
+#                    tables rank on. Within one domain every case ranks the
+#                    same field -- the `measures` list above fixes it and the
+#                    coverage thresholds remove anything not present
+#                    throughout -- so there is nothing to rescale away.
+#   normalized    -- (rank - 1) / (n - 1), 0 best, where n is the number of
+#                    measures that observation actually ranked. Needed only
+#                    when the pooled cases ranked different fields, which is
+#                    the cross-domain layer's permanent situation; it uses the
+#                    normalized scale regardless of this setting.
+# Both statistics are written either way; this only selects sort order and the
+# plotted axis. Override per invocation with --rank-scale.
+rank_scale: raw
+
+# Which per-measure number the rank boxplots sort their rows on. `median` is a
+# measure's typical standing; `quantile90` is its unfavourable tail -- the 90th
+# percentile of its per-case rank -- which orders on how badly a measure does
+# when it does badly. Under `quantile90` that quantile is also drawn on every
+# box, so the ordering the reader is asked to trust is visible rather than
+# asserted. Both are always computable from the same frame, so switching
+# changes only the sort, never what was measured. Override per invocation with
+# --rank-sort.
+#
+# The reported runs use the robustness ordering: a measure that wins on the
+# median and loses on the tail is only usually good, and which of the two a
+# reader is looking at should not be left to the caption.
+rank_sort: quantile90
+
+# How each measure's distribution is drawn. `box` is a quartile box with
+# percentile whiskers; `boxen` is a letter-value plot -- nested bands at the
+# 30th-70th and 10th-90th percentiles, narrowing and paling outward, with
+# capped whiskers to the observed minimum and maximum. Override per invocation
+# with --box-style.
+#
+# The reported runs use the boxen. Once the rows are ordered on the tail, a
+# quartile box shows only two points of that tail: the boxen shows where the
+# mass actually sits, and its whiskers reach the true extremes instead of
+# clipping them at a percentile without saying so. This changes the drawing
+# only, never the ordering or the numbers.
+box_style: boxen
+
+allow_incomplete: false

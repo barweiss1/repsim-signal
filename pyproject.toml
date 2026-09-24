@@ -1,0 +1,99 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "repsim-signal"
+version = "0.1.0"
+description = "Representation-similarity metrics and synthetic manifold experiments"
+readme = "README.md"
+requires-python = ">=3.10"
+# The environment is installed from requirements*.txt (see README.md), and the package itself with `pip install -e . --no-deps`, so
+# these lists are a declarative dependency contract, not a resolver input.
+# Groups mirror what each area of `src/manifold_repsim/` actually imports.
+dependencies = [
+    "PyYAML>=5.4.1",
+    "numpy",
+    "scipy",
+    "pandas",
+    "scikit-learn",
+    "torch>=2.1.2",
+    "matplotlib",
+    "tqdm",
+]
+
+[project.optional-dependencies]
+# Everything `manifold_repsim.resi` needs beyond the base dependencies, to
+# register measures in and run the external ReSi benchmark. ReSi itself is a
+# separate checkout installed from its own path (see docs/resi_cluster.md); it
+# is not a PyPI dependency of this project.
+resi = [
+    "torch_geometric",
+    "torchvision",
+    "torchmetrics",
+    "torcheval",
+    "pytorch-lightning==1.9.5",
+    "lightning-bolts",
+    "pyDeprecate",
+    "pyarrow",
+    "ogb",
+    "six",
+    "tensorboard",
+    "tensorboardX",
+    "geometry-score @ git+https://github.com/KhrulkovV/geometry-score",
+    "msid @ git+https://github.com/xgfs/imd",
+    "rtd @ git+https://github.com/IlyaTrofimov/RTD.git",
+    "gudhi",
+    "opencv-python",
+    "scikit-image",
+    "imageio>=2.9.0",
+    "medmnist",
+    "albumentations",
+    "Pillow",
+    "timm",
+    "datasets",
+    "transformers",
+    "accelerate",
+    "sentencepiece",
+    "protobuf",
+    "bitsandbytes",
+    "huggingface_hub",
+    "tokenizers",
+    "evaluate",
+    "jsonlines",
+    "textattack",
+    "sentence_transformers",
+    "hydra-core",
+    "loguru",
+    "gitpython",
+    "xmltodict",
+    "chardet",
+    "openpyxl",
+    "einops",
+    "Cython",
+    "cmake<4",
+]
+# Supported notebooks (softmax_experiments.ipynb) use seaborn/plotly beyond
+# the base matplotlib dependency, and all supported notebooks need a kernel.
+notebooks = ["seaborn", "plotly", "ipykernel", "ipywidgets"]
+# Tooling used to develop this repository, not to run it.
+dev = ["black==24.1.1", "pre-commit>=2.15.0", "wheel", "setuptools"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]
+

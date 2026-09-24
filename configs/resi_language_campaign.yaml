@@ -1,0 +1,163 @@
+version: 1
+domain: language
+run_root: data/resi/runs
+analysis_root: figures/resi
+quality_measures: [AUPRC, violation_rate, correlation, pearsonr, spearmanr, kendalltau]
+# Coverage is the archived BERT-L suite plus SmolLM2, whose baselines are
+# generated locally because ReSi archives none for that model.
+measures:
+  - MutualKNNTop10
+  - CKNNATop10
+  - sRWKArbfSigma05
+  - dRWKArbfSigma05
+  - CKArbfSigma05
+  - CKArbfSigma02
+  - sRWKArbfAUC
+  - CKArbfAUC
+  - UKArbfAUC
+  - dRWKArbfAUC
+  - mcRWKArbfAUC
+measure_sweeps:
+  sRWKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+  CKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+  UKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+  dRWKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+  mcRWKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+benchmarks:
+  - id: augmentation
+    dataset: sst2
+    base_config: configs/language/aug_sst2_2.yaml
+    architectures: [BERT-L]
+    baselines:
+      - path: nlp/nlp_aug_sst2.parquet
+  - id: augmentation
+    dataset: mnli
+    base_config: configs/language/aug_mnli_3.yaml
+    architectures: [BERT-L]
+    baselines:
+      - path: nlp/nlp_aug_mnli.parquet
+  - id: memorization
+    dataset: sst2
+    base_config: configs/language/mem_sst2_3.yaml
+    architectures: [BERT-L]
+    baselines:
+      - path: nlp/nlp_mem_sst2.parquet
+  - id: memorization
+    dataset: mnli
+    base_config: configs/language/mem_mnli_3.yaml
+    architectures: [BERT-L]
+    baselines:
+      - path: nlp/nlp_mem_mnli.parquet
+  - id: shortcut
+    dataset: sst2
+    base_config: configs/language/sc_sst2_3.yaml
+    architectures: [BERT-L]
+    baselines:
+      - path: nlp/nlp_shortcuts_sst2.parquet
+  - id: shortcut
+    dataset: mnli
+    base_config: configs/language/sc_mnli_3.yaml
+    architectures: [BERT-L]
+    baselines:
+      - path: nlp/nlp_shortcuts_mnli.parquet
+  - id: monotonicity
+    dataset: sst2
+    base_config: configs/language/monotonicity_nlp_standard_sst2_cls_tok.yaml
+    architectures: [BERT-L]
+    cache_to_mem: false
+    baselines:
+      - path: nlp/mono_nlp_standard_cls_tok_sst2.parquet
+  - id: monotonicity
+    dataset: mnli
+    base_config: configs/language/monotonicity_nlp_standard_mnli_cls_tok.yaml
+    architectures: [BERT-L]
+    cache_to_mem: false
+    baselines:
+      - path: nlp/mono_nlp_standard_cls_tok_mnli.parquet
+  - id: correlation
+    dataset: sst2
+    base_config: configs/language/correlation_nlp_standard_sst2.yaml
+    architectures: [BERT-L]
+    baselines:
+      - path: nlp/correlation_nlp_standard_sst2.parquet
+  - id: correlation
+    dataset: mnli
+    base_config: configs/language/correlation_nlp_standard_mnli.yaml
+    architectures: [BERT-L]
+    baselines:
+      - path: nlp/correlation_nlp_standard_mnli.parquet
+  # SmolLM2 entries below. ReSi has no augmentation config for SmolLM2 (only
+  # memorization/shortcut/monotonicity/correlation exist under
+  # configs/language/*_smollm.yaml), so there's no augmentation counterpart
+  # here, unlike BERT-L above. ReSi ships no archived baselines for
+  # smollm2-1.7b, so the parquets below were generated locally by
+  # scripts/prepare_resi_baselines.py --target smollm, exactly as the CIFAR100
+  # entries in the vision campaign were. They carry the reduced measure set
+  # that generator computes, not ReSi's full 24; configs/resi_language_analysis
+  # .yaml is what decides which of those are actually reported.
+  - id: memorization
+    dataset: sst2
+    base_config: configs/language/mem_sst2_smollm.yaml
+    architectures: [smollm2-1.7b]
+    baselines:
+      - path: mfbase_smollm_memorization_sst2.parquet
+        name: recreated-smollm2
+        architectures: [smollm2-1.7b]
+  - id: memorization
+    dataset: mnli
+    base_config: configs/language/mem_mnli_smollm.yaml
+    architectures: [smollm2-1.7b]
+    baselines:
+      - path: mfbase_smollm_memorization_mnli.parquet
+        name: recreated-smollm2
+        architectures: [smollm2-1.7b]
+  - id: shortcut
+    dataset: sst2
+    base_config: configs/language/sc_sst2_smollm.yaml
+    architectures: [smollm2-1.7b]
+    baselines:
+      - path: mfbase_smollm_shortcut_sst2.parquet
+        name: recreated-smollm2
+        architectures: [smollm2-1.7b]
+  - id: shortcut
+    dataset: mnli
+    base_config: configs/language/sc_mnli_smollm.yaml
+    architectures: [smollm2-1.7b]
+    baselines:
+      - path: mfbase_smollm_shortcut_mnli.parquet
+        name: recreated-smollm2
+        architectures: [smollm2-1.7b]
+  - id: monotonicity
+    dataset: sst2
+    base_config: configs/language/monotonicity_nlp_standard_sst2_smollm.yaml
+    architectures: [smollm2-1.7b]
+    cache_to_mem: false
+    baselines:
+      - path: mfbase_smollm_monotonicity_sst2.parquet
+        name: recreated-smollm2
+        architectures: [smollm2-1.7b]
+  - id: monotonicity
+    dataset: mnli
+    base_config: configs/language/monotonicity_nlp_standard_mnli_smollm.yaml
+    architectures: [smollm2-1.7b]
+    cache_to_mem: false
+    baselines:
+      - path: mfbase_smollm_monotonicity_mnli.parquet
+        name: recreated-smollm2
+        architectures: [smollm2-1.7b]
+  - id: correlation
+    dataset: sst2
+    base_config: configs/language/correlation_nlp_standard_sst2_smollm.yaml
+    architectures: [smollm2-1.7b]
+    baselines:
+      - path: mfbase_smollm_correlation_sst2.parquet
+        name: recreated-smollm2
+        architectures: [smollm2-1.7b]
+  - id: correlation
+    dataset: mnli
+    base_config: configs/language/correlation_nlp_standard_mnli_smollm.yaml
+    architectures: [smollm2-1.7b]
+    baselines:
+      - path: mfbase_smollm_correlation_mnli.parquet
+        name: recreated-smollm2
+        architectures: [smollm2-1.7b]
