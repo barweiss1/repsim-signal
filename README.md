@@ -1,6 +1,6 @@
 # repsim-signal
 
-Code accompanying the paper "Similarity as a Signal: Comparing Representations Across Multiple Scales".
+Code accompanying the paper.
 
 This repository contains the similarity-signal representation-similarity
 metrics, the synthetic manifold experiments, the glocal sweep experiment,
