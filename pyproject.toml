@@ -73,9 +73,8 @@ resi = [
     "Cython",
     "cmake<4",
 ]
-# Supported notebooks (softmax_experiments.ipynb) use seaborn/plotly beyond
-# the base matplotlib dependency, and all supported notebooks need a kernel.
-notebooks = ["seaborn", "plotly", "ipykernel", "ipywidgets"]
+# synthetic_demo.ipynb uses only the base dependencies; it needs a kernel.
+notebooks = ["ipykernel"]
 # Tooling used to develop this repository, not to run it.
 dev = ["black==24.1.1", "pre-commit>=2.15.0", "wheel", "setuptools"]
 

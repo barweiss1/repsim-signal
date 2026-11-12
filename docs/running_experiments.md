@@ -110,21 +110,17 @@ model and dataset.
 
 ## Notebooks
 
-These notebooks are exploratory drivers over the same package code as the
-scripted experiments above; they are supported and kept on the package API,
-but are not config-driven or checkpointed the way the scripts are.
-
-- **`synthetic_experiment.ipynb`** — interactive parameter sweeps (metric
-  hyperparameter, dimension, noise, cluster/ring count) over one configured
-  synthetic dataset, using `manifold_repsim.experiments.legacy.run_param_sweep`
-  and `plot_param_sweep`, plus a multi-metric comparison across a chosen data
-  parameter via `run_metric_comparison_across_data_param`. Edit the
-  `sim_params`/`base_transform_params`/`current_transform_params` dictionaries
-  at the top to choose the dataset and transform.
-- **`synthetic_experiment_calibrated.ipynb`** — the same style of sweep, with
-  a permutation null computed alongside each signal
-  (`sim_params["permutation_test"] = True`) and aggregate AUC / variance-
-  weighted-AUC calibration via `manifold_repsim.sweeps`.
+**`synthetic_demo.ipynb`** is a short, self-contained demo of the synthetic
+permuted-Gaussian experiment. It builds the Gaussian-mixture base data from
+`configs/synthetic_permuted_gaussian_mds.yaml`, shows the noise
+($\sigma_{noise}$), cluster-mixing ($p_{mix}$), and center-permutation
+($N_{perm}$) transformations, and plots the four similarity signals against
+the base data in the paper's style: the shape of one signal with its limits,
+one-parameter-at-a-time sweeps, and the AUC of every swept condition. It
+computes everything in memory with the same package functions as
+`scripts/synthetic_sweep.py`, writes nothing to `data/` or `figures/`, and
+runs in about a minute on a CPU. Use the scripts above for the full grid, the
+MDS embeddings, and the paper figures.
 
 ## ReSi campaigns
 
