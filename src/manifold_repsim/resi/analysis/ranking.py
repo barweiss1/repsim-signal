@@ -386,6 +386,39 @@ def rank_case_observations(
     return per_observation, pd.DataFrame(case_rows)
 
 
+def rank_scope(
+    values: pd.DataFrame,
+    *,
+    scope_columns: list[str],
+    max_nan_fraction: float,
+    min_case_coverage: float,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Quality-filter, coverage-filter, and rank one reporting scope.
+
+    Returns the values this scope reports, the measure exclusions it recorded,
+    and its per-case ranks. Every scope runs the same three steps in the same
+    order, and this is the only place that order is written down.
+
+    The returned values keep every quality and functional similarity measure
+    the analysis config asked for, narrowed to the measures the coverage filter
+    kept -- so the conformity rate still reaches the heatmaps and the AUPRC
+    scatter and Disagreement still reaches the tables, while a measure dropped
+    for sparse coverage does not reappear there after leaving the ranking.
+    """
+    ranking_values, exclusions = filter_measures_by_coverage(
+        select_ranked_functional(select_ranked_quality(values)),
+        max_nan_fraction=max_nan_fraction,
+        min_case_coverage=min_case_coverage,
+        scope_columns=scope_columns,
+    )
+    _observation_ranks, case_ranks = rank_case_observations(ranking_values)
+    if values.empty:
+        return values, exclusions, case_ranks
+    kept = set(ranking_values["metric"].astype(str))
+    reported = values[values["metric"].astype(str).isin(kept)].reset_index(drop=True)
+    return reported, exclusions, case_ranks
+
+
 def summarize_domains(
     case_ranks: pd.DataFrame, *, rank_scale: str | None = None
 ) -> pd.DataFrame:
@@ -432,5 +465,6 @@ __all__ = [
     "select_ranked_quality",
     "validate_rank_scale",
     "rank_case_observations",
+    "rank_scope",
     "summarize_domains",
 ]

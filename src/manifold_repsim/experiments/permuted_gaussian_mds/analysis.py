@@ -118,6 +118,23 @@ def signal_values(config: dict[str, Any]) -> np.ndarray:
     )
 
 
+def outlier_signal_values(config: dict[str, Any]) -> np.ndarray:
+    """Resolve the outlier sweep's own bandwidth grid.
+
+    Separate from `signal_values` because a translated point only registers
+    in an RBF kernel once the bandwidth is comparable to its distance. The
+    parameter sweeps need no such reach, and widening their shared grid would
+    change every other synthetic signal figure.
+    """
+    specification = config["metrics"]["outlier_sweep"]["signals"]
+    function = np.geomspace if specification["scale"] == "log" else np.linspace
+    return function(
+        specification["min"],
+        specification["max"],
+        specification["num"],
+    )
+
+
 def _signal_sweep_values(
     parameter: str,
     config: dict[str, Any],
@@ -138,6 +155,168 @@ def _signal_sweep_values(
         sweep = config["grid"][parameter]
         values = np.linspace(sweep["min"], sweep["max"], sweep["num"])
     return values
+
+
+def outlier_direction(dim: int) -> np.ndarray:
+    """The fixed unit direction a swept outlier is translated along.
+
+    The first coordinate axis. Any fixed direction would do -- the clusters
+    are sampled isotropically on a hypersphere, so no axis is special -- and
+    pinning it to a constant keeps the sweep reproducible and independent of
+    the dataset seed.
+    """
+    direction = np.zeros(dim, dtype=float)
+    direction[0] = 1.0
+    return direction
+
+
+def analyze_outlier_sweep(config: dict[str, Any], scratch: Path) -> None:
+    """Signal curves for base against itself with one point moved far away.
+
+    A robustness probe rather than a dataset transform: the comparison is the
+    base data against an exact copy of itself in which a single point has
+    been translated along `outlier_direction` by each configured distance.
+    Everything else is identical, so whatever the signal reports is the
+    effect of that one outlier alone.
+    """
+    outlier = config["metrics"]["outlier_sweep"]
+    specification = outlier["signals"]
+    sigma_values = outlier_signal_values(config)
+    distances = np.asarray(outlier["distances"], dtype=float)
+    point_index = int(outlier["point_index"])
+    checkpoint = scratch / "outlier_sweep.npz"
+    checkpoint.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_hash = config_fingerprint(
+        {
+            "dataset": dataset_fingerprint(config),
+            "signals": specification,
+            "distances": distances.tolist(),
+            "point_index": point_index,
+            "fixed": config["metrics"]["fixed"],
+        }
+    )
+    if (
+        checkpoint.exists()
+        and config["execution"]["checkpoint_signals"]
+        and not config["execution"]["recompute_metrics"]
+    ):
+        with np.load(checkpoint) as saved:
+            if saved["fingerprint"].item() == checkpoint_hash:
+                return
+
+    _, base = build_base_dataset(config)
+    direction = outlier_direction(base.shape[1])
+    datasets = [base]
+    for distance in distances:
+        moved = base.copy()
+        moved[point_index] = moved[point_index] + distance * direction
+        datasets.append(moved)
+    datasets = np.stack(datasets)
+
+    gathered: dict[str, list[np.ndarray]] = {name: [] for name in SIGNAL_METRICS}
+    for index, sigma in enumerate(sigma_values):
+        matrices = compute_signal_similarity_matrices(
+            datasets,
+            list(SIGNAL_METRICS),
+            float(sigma),
+            scratch / "outlier_sweep" / f"{index:04d}",
+        )
+        for name in SIGNAL_METRICS:
+            # Every translated copy against base, which is row 0.
+            gathered[name].append(matrices[name][1:, 0])
+
+    # The configured fixed metrics at the same comparisons. Linear CKA is the
+    # signals' sigma -> inf limit, and the figures draw it per distance so the
+    # curves read against where they are heading. These comparisons are not
+    # conditions on the swept grid, so no per-condition result holds them.
+    fixed = {
+        metric["id"]: compute_fixed_similarity_matrix(
+            datasets,
+            metric,
+            scratch / "outlier_sweep" / metric["id"],
+        )[1:, 0]
+        for metric in config["metrics"]["fixed"]
+    }
+    save_npz(
+        checkpoint,
+        fingerprint=np.array(checkpoint_hash),
+        values=distances,
+        sigma=sigma_values,
+        **{f"fixed_{key}": np.asarray(value, float) for key, value in fixed.items()},
+        # (distance, sigma), matching the parameter sweeps' own layout.
+        **{name: np.stack(gathered[name]).T for name in SIGNAL_METRICS},
+    )
+
+
+def analyze_signal_shapes(config: dict[str, Any], scratch: Path) -> None:
+    """Signal curves for the single comparison the shape figures draw.
+
+    Deliberately separate from `analyze_parameter_signal_sweeps`, whose
+    levels come from `grid` and so can only name conditions the swept grid
+    contains. This one computes its own transform from
+    ``metrics.signal_shapes.fixed_parameters``, so the shape figures can sit
+    at a condition the grid never visits without perturbing the grid, the
+    sweeps, or any other figure.
+    """
+    specification = config["metrics"]["signals"]
+    sigma_values = signal_values(config)
+    shape_params = config["metrics"]["signal_shapes"]["fixed_parameters"]
+    checkpoint = scratch / "signal_shapes.npz"
+    checkpoint.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint_hash = config_fingerprint(
+        {
+            "dataset": dataset_fingerprint(config),
+            "signals": specification,
+            "fixed_parameters": shape_params,
+        }
+    )
+    if (
+        checkpoint.exists()
+        and config["execution"]["checkpoint_signals"]
+        and not config["execution"]["recompute_metrics"]
+    ):
+        with np.load(checkpoint) as saved:
+            if saved["fingerprint"].item() == checkpoint_hash:
+                return
+
+    dataset, base = build_base_dataset(config)
+    transformed = dataset.transform_current(
+        transform_config(config, **shape_params)
+    ).copy()
+    datasets = np.stack([base, transformed])
+    gathered: dict[str, list[float]] = {name: [] for name in SIGNAL_METRICS}
+    for index, sigma in enumerate(sigma_values):
+        matrices = compute_signal_similarity_matrices(
+            datasets,
+            list(SIGNAL_METRICS),
+            float(sigma),
+            scratch / "signal_shapes" / f"{index:04d}",
+        )
+        for name in SIGNAL_METRICS:
+            # Row 1 against row 0: the transformed condition against base.
+            gathered[name].append(float(matrices[name][1, 0]))
+
+    # The configured fixed metrics at this same comparison. The shape
+    # condition need not lie on the swept grid, so their saved per-condition
+    # results cannot be indexed for it; the figures need linear CKA here as
+    # the signals' sigma -> inf limit, so it is measured directly.
+    fixed = {
+        specification["id"]: float(
+            compute_fixed_similarity_matrix(
+                datasets,
+                specification,
+                scratch / "signal_shapes" / specification["id"],
+            )[1, 0]
+        )
+        for specification in config["metrics"]["fixed"]
+    }
+    save_npz(
+        checkpoint,
+        fingerprint=np.array(checkpoint_hash),
+        sigma=sigma_values,
+        **{name: np.asarray(gathered[name], dtype=float) for name in SIGNAL_METRICS},
+        **{f"fixed_{key}": np.array(value) for key, value in fixed.items()},
+    )
 
 
 def analyze_parameter_signal_sweeps(config: dict[str, Any], scratch: Path) -> None:
@@ -345,6 +524,8 @@ def analyze_dataset(config: dict[str, Any]) -> list[Path]:
         paths.append(path)
     paths.extend(analyze_signals(config, datasets, selected, scratch))
     analyze_parameter_signal_sweeps(config, scratch)
+    analyze_signal_shapes(config, scratch)
+    analyze_outlier_sweep(config, scratch)
 
     encodings, rows = metadata(config, grid)
     base_mask = np.array([bool(rows[index]["is_base"]) for index in selected])

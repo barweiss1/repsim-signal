@@ -23,6 +23,8 @@ from .kernels import unbiased_cka
 from .neighbors import cknna
 from .neighbors import cycle_knn
 from .neighbors import mutual_knn
+from .neighbors import qsi
+from .neighbors import tsi
 from .prepared import PreparedMetricPair
 from .prepared import prepare_metric_pair
 from .prepared import score_prepared_metric
@@ -52,6 +54,8 @@ class AlignmentMetrics:
     _to_torch_tensor = staticmethod(to_torch_tensor)
     cycle_knn = staticmethod(cycle_knn)
     mutual_knn = staticmethod(mutual_knn)
+    tsi = staticmethod(tsi)
+    qsi = staticmethod(qsi)
     cka = staticmethod(cka)
     rbf_uka = staticmethod(rbf_uka)
     unbiased_cka = staticmethod(unbiased_cka)

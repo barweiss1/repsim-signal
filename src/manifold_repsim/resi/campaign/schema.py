@@ -299,15 +299,23 @@ def _parse_measure_sweeps(
         if isinstance(num, bool) or not isinstance(num, int) or num < 2:
             raise ValueError(f"{field}.num must be an integer of at least 2")
         scale = str(grid["scale"])
-        if scale not in {"linear", "log"}:
-            raise ValueError(f"{field}.scale must be 'linear' or 'log'")
+        if scale not in {"linear", "log", "sqrt"}:
+            raise ValueError(f"{field}.scale must be 'linear', 'log', or 'sqrt'")
         minimum = float(grid["min"])
         maximum = float(grid["max"])
         if minimum >= maximum:
             raise ValueError(f"{field}.min must be smaller than max")
         if scale == "log" and minimum <= 0:
             raise ValueError(f"{field} with log scale requires a positive min")
+        if scale == "sqrt" and minimum < 0:
+            raise ValueError(f"{field} with sqrt scale requires a non-negative min")
         sweeps.append(MeasureSweepSpec(measure, minimum, maximum, num, scale))
+    for measure in measures:
+        if get_measure_spec(measure).requires_sweep_grid and measure not in values:
+            raise ValueError(
+                f"{measure} is defined by its sampling grid and needs a "
+                f"measure_sweeps[{measure}] entry"
+            )
     return tuple(sweeps)
 
 

@@ -45,9 +45,13 @@ measures:
   # re-run, not re-filtered.
   - MutualKNNTop10
   - CKNNATop10
+  - TSIEuclid
+  - QSIEuclid
   - CKArbfSigma02
   - sRWKArbfAUC
   - CKArbfAUC
+  - CKArbfAUCSqrt
+  - CKArbfAUCLin
   - UKArbfAUC
   - dRWKArbfAUC
 

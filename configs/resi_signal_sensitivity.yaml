@@ -1,0 +1,55 @@
+# How the CKA signal's AUC ranking responds to the number of grid samples and to
+# the bandwidth limits. Every variant is the plain mean of the stored
+# CKArbfAUC curve over a subset of its 100 log-spaced points (0.05 .. 10), so no
+# similarity is recomputed: `resi.py sensitivity-replay` re-scores the quality
+# measures from the stored curves and `resi.py sensitivity-summary` ranks them.
+#
+# The curves come from `CKArbfAUCRerun`, not `CKArbfAUC`: the original run stored
+# the wrong curve on most cross-group comparisons (stale signal; fixed in
+# resi/runtime.py), while the rerun stores each pair's own. The two scalars agree.
+base_metric: CKArbfAUCRerun
+# The reported measure each variant replaces in the ranked field.
+field_measure: CKArbfAUC
+scratch_name: signal-sensitivity
+
+variants:
+  # Keeps every stored point, so it is the unchanged measure; replaying it must
+  # reproduce the stored scores exactly.
+  - {key: samples100, samples: 100}
+  - {key: samples75, samples: 75}
+  - {key: samples50, samples: 50}
+  - {key: samples25, samples: 25}
+  # Stored points inside the interval: 74 points from 0.201, and 74 up to 2.487.
+  - {key: left, lower: 0.2, upper: 10.0}
+  - {key: right, lower: 0.05, upper: 2.5}
+
+analyses:
+  samples:
+    title: Number of samples on the bandwidth grid
+    x_label: '$m$'
+    points:
+      - {variant: samples25, label: "25"}
+      - {variant: samples50, label: "50"}
+      - {variant: samples75, label: "75"}
+      - {variant: samples100, label: "100"}
+  limits:
+    title: Bandwidth limits
+    x_label: 'Bandwidth range $[\sigma_{\min}, \sigma_{\max}]$'
+    points:
+      - {variant: samples100, label: "[0.05, 10]"}
+      - {variant: left, label: "[0.2, 10]"}
+      - {variant: right, label: "[0.05, 2.5]"}
+
+# Single-bandwidth CKA against the swept measure (`field_measure`). Each is ranked
+# in the same field: the reported measures minus the reference and minus all of
+# these, plus the one measure under test. Values come from the main results, so
+# no replay is needed.
+bandwidths:
+  reference: CKArbfAUC
+  measures:
+    - {measure: CKArbfSigma02, sigma: 0.2}
+    - {measure: CKArbfSigma04, sigma: 0.4}
+    - {measure: CKArbfSigma05, sigma: 0.5}
+    - {measure: CKArbfSigma06, sigma: 0.6}
+    - {measure: CKArbfSigma08, sigma: 0.8}
+    - {measure: CKArbfSigma10, sigma: 1.0}

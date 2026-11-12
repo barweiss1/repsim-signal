@@ -25,7 +25,9 @@ from manifold_repsim.metrics import prepare_metric_pair
 from manifold_repsim.metrics import score_prepared_curve
 from manifold_repsim.metrics import score_prepared_metric
 from manifold_repsim.sweeps.grid import resolve_metric_sweep_grid
-from manifold_repsim.sweeps.signal_aggregation import integrate_metric_over_param
+from manifold_repsim.sweeps.signal_aggregation import (
+    integrate_metric_over_param,
+)
 
 from .measures import MANIFOLD_RESI_MEASURE_CLASSES, RESI_MEASURE_SPECS, ResiMeasureSpec
 
@@ -314,6 +316,7 @@ def _sweep_values(
     provenance = {
         "sweep_len_requested": int(resolved.requested.num),
         "logscale": resolved.requested.scale == "log",
+        "grid_scale": resolved.requested.scale,
         "sweep_source": source,
     }
     return param_name, values.tolist(), provenance
@@ -410,10 +413,9 @@ class _ManifoldAUCMeasure(_ManifoldMeasure):
                 for score in score_prepared_curve(prepared)
             ]
 
-        auc_value = _finite_float(
-            integrate_metric_over_param(param_values, scores, self.integration_method),
-            self.__class__.__name__,
-        )
+        integration_method = self.integration_method
+        raw_auc = integrate_metric_over_param(param_values, scores, integration_method)
+        auc_value = _finite_float(raw_auc, self.__class__.__name__)
         self.last_similarity_signal = {
             "metric": self.__class__.__name__,
             "base_metric": self.metric_name,
@@ -423,7 +425,7 @@ class _ManifoldAUCMeasure(_ManifoldMeasure):
             ],
             "scores": [float(v) for v in scores],
             "auc_value": auc_value,
-            "integration_method": self.integration_method,
+            "integration_method": integration_method,
             "max_sweep_param": max(param_values) if param_values else None,
             "num_unique_params": len(param_values),
             **sweep_info,

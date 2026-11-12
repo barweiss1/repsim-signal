@@ -42,6 +42,7 @@ SETTINGS_KEYS = frozenset(
         "box_style",
         "max_nan_fraction",
         "min_case_coverage",
+        "measure_labels",
     }
 )
 
@@ -110,6 +111,8 @@ class AnalysisSettings:
     box_style: str = DEFAULT_BOX_STYLE
     max_nan_fraction: float = DEFAULT_MAX_NAN_FRACTION
     min_case_coverage: float = DEFAULT_MIN_CASE_COVERAGE
+    # (measure, display label) pairs that rename a measure for this analysis.
+    measure_labels: tuple[tuple[str, str], ...] = ()
 
     def resolve_measures(self, present: Iterable[str]) -> tuple[str, ...] | None:
         """Return the measures to report, or None to report every one present.
@@ -176,6 +179,12 @@ def parse_analysis_settings(
     min_case_coverage = _fraction(
         data.get("min_case_coverage"), "min_case_coverage", DEFAULT_MIN_CASE_COVERAGE
     )
+    labels = data.get("measure_labels", {})
+    if not isinstance(labels, Mapping) or not all(
+        isinstance(name, str) and isinstance(label, str) and label.strip()
+        for name, label in labels.items()
+    ):
+        raise ValueError("measure_labels must map measure names to non-empty labels")
     return AnalysisSettings(
         path=path,
         measures=measures,
@@ -188,6 +197,7 @@ def parse_analysis_settings(
         box_style=box_style,
         max_nan_fraction=max_nan_fraction,
         min_case_coverage=min_case_coverage,
+        measure_labels=tuple(labels.items()),
     )
 
 
@@ -215,7 +225,7 @@ def settings_snapshot(
     ranked, sorted and drew, which may be a command line override rather than
     the settings file's own value.
     """
-    return {
+    snapshot = {
         "settings_path": str(settings.path) if settings.path else None,
         "measures": list(settings.measures) if settings.measures else None,
         "exclude_measures": list(settings.exclude_measures),
@@ -245,6 +255,9 @@ def settings_snapshot(
         "min_case_coverage": settings.min_case_coverage,
         "reported_measures": list(selected) if selected else None,
     }
+    if settings.measure_labels:
+        snapshot["measure_labels"] = dict(settings.measure_labels)
+    return snapshot
 
 
 __all__ = [

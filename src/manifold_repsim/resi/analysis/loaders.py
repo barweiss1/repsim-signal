@@ -13,7 +13,13 @@ from typing import Any, Iterable
 import numpy as np
 import pandas as pd
 
-from manifold_repsim.resi.campaign import Campaign, KnownMissingModel, ManifestEntry
+from manifold_repsim.resi.campaign import (
+    Campaign,
+    KnownMissingModel,
+    ManifestEntry,
+    read_manifest,
+)
+from manifold_repsim.resi.paths import slug
 
 from .config import quality_direction
 from ..identifiers import parse_comparison_id
@@ -43,6 +49,19 @@ OBSERVATION_COLUMNS = [
     "model",
     "functional_similarity_measure",
 ]
+
+
+def manifest_entries(campaign: Campaign, run_name: str):
+    run_dir = campaign.run_root / slug(run_name) / campaign.domain
+    compute_path = run_dir / "compute_manifest.jsonl"
+    baseline_path = run_dir / "baseline_manifest.jsonl"
+    if not compute_path.is_file():
+        raise FileNotFoundError(
+            f"Compute manifest not found; run prepare first: {compute_path}"
+        )
+    compute = read_manifest(compute_path)
+    baseline = read_manifest(baseline_path) if baseline_path.is_file() else []
+    return compute, baseline
 
 
 def select_measures(

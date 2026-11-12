@@ -52,6 +52,40 @@ class SweepGridTests(unittest.TestCase):
         self.assertEqual(exact.source, "experiment")
         self.assertEqual(generated.source, "experiment")
 
+    def test_sqrt_grid_is_equally_spaced_in_the_square_root(self):
+        grid = {"min": 0.05, "max": 10.0, "num": 100, "scale": "sqrt"}
+        values = resolve_metric_sweep_grid("cka_rbf", grid).values
+
+        self.assertEqual(len(values), 100)
+        self.assertEqual(values[0], 0.05)
+        self.assertEqual(values[-1], 10.0)
+        self.assertTrue(np.all(np.diff(values) > 0))
+        roots = np.sqrt(values)
+        np.testing.assert_allclose(np.diff(roots), np.diff(roots)[0], rtol=1e-9)
+
+    def test_log_sqrt_and_linear_grids_shift_points_toward_large_sigma(self):
+        """The grid is the weighting: point density goes as sigma ** (p - 1)."""
+        counts = {}
+        for scale in ("log", "sqrt", "linear"):
+            values = resolve_metric_sweep_grid(
+                "cka_rbf", {"min": 0.05, "max": 10.0, "num": 100, "scale": scale}
+            ).values
+            counts[scale] = (int(np.sum(values <= 1.0)), int(np.sum(values >= 5.0)))
+
+        self.assertEqual(counts["log"], (56, 13))
+        self.assertEqual(counts["sqrt"], (27, 32))
+        self.assertEqual(counts["linear"], (10, 50))
+
+    def test_sqrt_grid_allows_zero_but_not_negative_minimum(self):
+        values = resolve_metric_sweep_grid(
+            "cka_rbf", {"min": 0.0, "max": 4.0, "num": 5, "scale": "sqrt"}
+        ).values
+        np.testing.assert_allclose(values, [0.0, 0.25, 1.0, 2.25, 4.0])
+        with self.assertRaisesRegex(ValueError, "non-negative"):
+            SweepGridConfig(minimum=-0.1, maximum=1.0, num=3, scale="sqrt")
+        with self.assertRaisesRegex(ValueError, "'linear', 'log', or 'sqrt'"):
+            SweepGridConfig(minimum=0.1, maximum=1.0, num=3, scale="quadratic")
+
     def test_generated_integer_grids_round_instead_of_failing(self):
         """A generated grid over topk lands on fractional points by construction."""
         generated = resolve_metric_sweep_grid(

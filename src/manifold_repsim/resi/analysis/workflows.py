@@ -8,22 +8,25 @@ import numpy as np
 import pandas as pd
 
 from manifold_repsim.config import save_effective_config
-from manifold_repsim.resi.campaign import load_campaign, read_manifest
+from manifold_repsim.resi.campaign import load_campaign
 from manifold_repsim.resi.paths import slug
 
 from .config import (
     CORRELATION_TASK_DIRS,
+    label_overrides,
     validate_box_style,
     validate_rank_scale,
     validate_rank_sort,
 )
-from .loaders import known_missing_coverage, normalize_manifests, select_measures
+from .loaders import (
+    known_missing_coverage,
+    manifest_entries as _manifest_entries,
+    normalize_manifests,
+    select_measures,
+)
 from .settings import AnalysisSettings, settings_snapshot
 from .ranking import (
-    filter_measures_by_coverage,
-    rank_case_observations,
-    select_ranked_functional,
-    select_ranked_quality,
+    rank_scope as _rank_scope,
     summarize_domains,
 )
 from .signals import (
@@ -42,19 +45,6 @@ from .plotting import (
     plot_rank_boxplots,
     plot_signal_groups,
 )
-
-
-def _manifest_entries(campaign, run_name: str):
-    run_dir = campaign.run_root / slug(run_name) / campaign.domain
-    compute_path = run_dir / "compute_manifest.jsonl"
-    baseline_path = run_dir / "baseline_manifest.jsonl"
-    if not compute_path.is_file():
-        raise FileNotFoundError(
-            f"Compute manifest not found; run prepare first: {compute_path}"
-        )
-    compute = read_manifest(compute_path)
-    baseline = read_manifest(baseline_path) if baseline_path.is_file() else []
-    return compute, baseline
 
 
 def _value_coverage(values: pd.DataFrame) -> pd.DataFrame:
@@ -117,39 +107,6 @@ def _value_coverage(values: pd.DataFrame) -> pd.DataFrame:
     grouped["result_path"] = ""
     grouped["full_csv_path"] = ""
     return grouped.reindex(columns=columns)
-
-
-def _rank_scope(
-    values: pd.DataFrame,
-    *,
-    scope_columns: list[str],
-    max_nan_fraction: float,
-    min_case_coverage: float,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Quality-filter, coverage-filter, and rank one reporting scope.
-
-    Returns the values this scope reports, the measure exclusions it recorded,
-    and its per-case ranks. Every scope runs the same three steps in the same
-    order, and this is the only place that order is written down.
-
-    The returned values keep every quality and functional similarity measure
-    the analysis config asked for, narrowed to the measures the coverage filter
-    kept -- so the conformity rate still reaches the heatmaps and the AUPRC
-    scatter and Disagreement still reaches the tables, while a measure dropped
-    for sparse coverage does not reappear there after leaving the ranking.
-    """
-    ranking_values, exclusions = filter_measures_by_coverage(
-        select_ranked_functional(select_ranked_quality(values)),
-        max_nan_fraction=max_nan_fraction,
-        min_case_coverage=min_case_coverage,
-        scope_columns=scope_columns,
-    )
-    _observation_ranks, case_ranks = rank_case_observations(ranking_values)
-    if values.empty:
-        return values, exclusions, case_ranks
-    kept = set(ranking_values["metric"].astype(str))
-    reported = values[values["metric"].astype(str).isin(kept)].reset_index(drop=True)
-    return reported, exclusions, case_ranks
 
 
 class TaskScope(NamedTuple):
@@ -420,6 +377,36 @@ def _write_benchmark_analysis(
 
 
 def analyze_campaign(
+    campaign_path: str | Path,
+    run_name: str,
+    *,
+    allow_incomplete: bool = False,
+    measures: Iterable[str] | None = None,
+    rank_scale: str | None = None,
+    rank_sort: str | None = None,
+    box_style: str | None = None,
+    settings: AnalysisSettings | None = None,
+) -> Path:
+    """Analyze one prepared campaign run, optionally over a fixed measure set.
+
+    Display names come from the settings' ``measure_labels`` overrides, applied
+    for the duration of the run only.
+    """
+    settings = settings or AnalysisSettings()
+    with label_overrides(dict(settings.measure_labels)):
+        return _analyze_campaign(
+            campaign_path,
+            run_name,
+            allow_incomplete=allow_incomplete,
+            measures=measures,
+            rank_scale=rank_scale,
+            rank_sort=rank_sort,
+            box_style=box_style,
+            settings=settings,
+        )
+
+
+def _analyze_campaign(
     campaign_path: str | Path,
     run_name: str,
     *,

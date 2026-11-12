@@ -8,8 +8,12 @@ import torch
 
 from .kernels import hsic_biased
 from .kernels import hsic_unbiased
+from .ordinal import ordinal_dissimilarity
+from .ordinal import score_quadruplet_matrices
+from .ordinal import score_triplet_matrices
 from .utils import normalized_similarity_or_zero
 from .utils import validate_representation
+from .utils import subsample_representation_pair
 from .utils import validate_representation_pair
 from .utils import validate_topk
 
@@ -217,3 +221,74 @@ def cknna(
         distance_agnostic=distance_agnostic,
         unbiased=unbiased,
     )
+
+
+def _ordinal_inputs(
+    feats_A: Any,
+    feats_B: Any,
+    metric_name: str,
+    min_samples: int,
+    max_points: int | None,
+    subsample_seed: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    feats_A, feats_B = validate_representation_pair(
+        feats_A,
+        feats_B,
+        metric_name=metric_name,
+        min_samples=min_samples,
+    )
+    return subsample_representation_pair(
+        feats_A,
+        feats_B,
+        max_points,
+        subsample_seed,
+        minimum=min_samples,
+    )
+
+
+def tsi(
+    feats_A: Any,
+    feats_B: Any,
+    use_distance: bool = True,
+    max_points: int | None = None,
+    subsample_seed: int = 0,
+) -> float:
+    """Compute the triplet similarity index of two representations.
+
+    Formula: ``score = E_{(i,j,k) distinct} 1[sign(d_A(i,j) - d_A(i,k)) =
+    sign(d_B(i,j) - d_B(i,k))]``. ``d`` is Euclidean distance, or the inner
+    product when ``use_distance=False``. A tie is the third outcome ``0``: a
+    tie in both spaces agrees, a tie in one space only disagrees, and no
+    comparison is dropped. Entries closer than their float64 accumulation error
+    are one tie. With ``max_points`` a seeded shared row subset is scored exactly.
+    """
+    feats_A, feats_B = _ordinal_inputs(
+        feats_A, feats_B, "tsi", 3, max_points, subsample_seed
+    )
+    matrix_a, tolerance_a = ordinal_dissimilarity(feats_A, use_distance)
+    matrix_b, tolerance_b = ordinal_dissimilarity(feats_B, use_distance)
+    return score_triplet_matrices(matrix_a, tolerance_a, matrix_b, tolerance_b)
+
+
+def qsi(
+    feats_A: Any,
+    feats_B: Any,
+    use_distance: bool = True,
+    max_points: int | None = None,
+    subsample_seed: int = 0,
+) -> float:
+    """Compute the quadruplet similarity index of two representations.
+
+    Formula: ``score = E_{(i,j,k,l) distinct} 1[sign(d_A(i,j) - d_A(k,l)) =
+    sign(d_B(i,j) - d_B(k,l))]``, evaluated as
+    ``((n + 1) * AdjKendall(D_A, D_B) - 4 * TSI) / (n - 3)`` over the
+    ``n (n - 1) / 2`` unique pairwise values, where ``AdjKendall`` is the share
+    of pair-of-pairs whose order agrees with joint ties counted as agreement.
+    ``d`` must be symmetric. Tie handling and ``max_points`` follow ``tsi``.
+    """
+    feats_A, feats_B = _ordinal_inputs(
+        feats_A, feats_B, "qsi", 4, max_points, subsample_seed
+    )
+    matrix_a, tolerance_a = ordinal_dissimilarity(feats_A, use_distance)
+    matrix_b, tolerance_b = ordinal_dissimilarity(feats_B, use_distance)
+    return score_quadruplet_matrices(matrix_a, tolerance_a, matrix_b, tolerance_b)

@@ -21,14 +21,23 @@ from .neighbors import compute_nearest_neighbors
 from .neighbors import score_cknna_rankings
 from .neighbors import score_cycle_neighbor_rankings
 from .neighbors import score_mutual_neighbor_rankings
+from .ordinal import ordinal_dissimilarity
+from .ordinal import score_quadruplet_matrices
+from .ordinal import score_triplet_matrices
 from .random_walk import compute_rbf_rwka_diffusion_cache
 from .random_walk import degree_center_random_walk_kernel
 from .random_walk import normalize_random_walk_kernel
 from .random_walk import power_rbf_rwka_diffusion_cache
 from .random_walk import score_rwka_kernels
 from .registry import get_metric_spec
+from .utils import subsample_representation_pair
 from .utils import validate_representation_pair
 from .utils import validate_topk
+
+
+# Smallest sample count at which each ordinal index has a comparison to make:
+# triplets need three distinct points and quadruplets four.
+ORDINAL_MINIMUM_SAMPLES = {"tsi": 3, "tsi_ip": 3, "qsi": 4, "qsi_ip": 4}
 
 
 @dataclass(frozen=True)
@@ -161,14 +170,25 @@ def prepare_metric_pair(
     if metric_name == "cknna":
         min_samples = 4 if resolved_kwargs.get("unbiased", True) else 3
     else:
-        min_samples = 2
+        min_samples = ORDINAL_MINIMUM_SAMPLES.get(metric_name, 2)
     feats_A, feats_B = validate_representation_pair(
         feats_A,
         feats_B,
         metric_name=metric_name,
         min_samples=min_samples,
     )
-    if metric_name in {"cycle_knn", "mutual_knn", "mutual_knn_dist"}:
+    if metric_name in ORDINAL_MINIMUM_SAMPLES:
+        use_distance = resolved_kwargs.get("use_distance", True)
+        feats_A, feats_B = subsample_representation_pair(
+            feats_A,
+            feats_B,
+            resolved_kwargs.get("max_points"),
+            resolved_kwargs.get("subsample_seed", 0),
+            minimum=min_samples,
+        )
+        source = ordinal_dissimilarity(feats_A, use_distance)
+        target = ordinal_dissimilarity(feats_B, use_distance)
+    elif metric_name in {"cycle_knn", "mutual_knn", "mutual_knn_dist"}:
         topk = validate_topk(
             resolved_kwargs["topk"],
             feats_A.shape[0],
@@ -323,6 +343,17 @@ def score_prepared_metric(
     resolved_kwargs.update(kwargs)
     source, target = prepared.source, prepared.target
 
+    if metric_name in ORDINAL_MINIMUM_SAMPLES:
+        matrix_a, tolerance_a = source
+        matrix_b, tolerance_b = target
+        if target_permutation is not None:
+            matrix_b = _permute_square(matrix_b, target_permutation)
+        score = (
+            score_triplet_matrices
+            if metric_name.startswith("tsi")
+            else score_quadruplet_matrices
+        )
+        return score(matrix_a, tolerance_a, matrix_b, tolerance_b)
     if metric_name in {"cycle_knn", "mutual_knn", "mutual_knn_dist"}:
         if target_permutation is not None:
             target = _permute_neighbor_rankings(target, target_permutation)

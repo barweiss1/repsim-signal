@@ -159,20 +159,45 @@ def remap_missing_nlp_model_paths(
 
 
 def _signal_json(metric: Any, metric_value: Any) -> str | None:
+    """The metric's last similarity signal, if it is the one behind this value.
+
+    ReSi also calls ``add_results`` to mirror an existing result while it
+    evaluates, and at that point the measure still holds the curve of whichever
+    pair it scored last. Such a curve is not this row's, and its AUC says so, so
+    a signal whose ``auc_value`` differs from the stored value is dropped rather
+    than attached to the wrong comparison.
+    """
     signal = getattr(metric, "last_similarity_signal", None)
     if not isinstance(signal, dict):
         return None
     try:
-        finite = math.isfinite(float(metric_value))
+        value = float(metric_value)
+        finite = math.isfinite(value)
     except (TypeError, ValueError):
         finite = False
     if not finite:
+        return None
+    try:
+        belongs = math.isclose(
+            float(signal["auc_value"]), value, rel_tol=1e-9, abs_tol=1e-12
+        )
+    except (KeyError, TypeError, ValueError):
+        belongs = False
+    if not belongs:
         return None
     return json.dumps(signal, sort_keys=True, separators=(",", ":"))
 
 
 def install_signal_storage_hook() -> None:
-    """Patch ReSi's result storer in memory to carry the similarity signal."""
+    """Patch ReSi's result storer in memory to carry the similarity signal.
+
+    The signal goes on the row(s) written by the call that computed it. ReSi's
+    ``add_results`` writes only one direction of a symmetric pair (it tests for
+    an existing row with the unswapped ids before writing the mirror), so the
+    row to annotate cannot be chosen in advance by id: choosing ``min(ids)``
+    dropped the signal whenever the computed direction was the larger id, and
+    left the mirror ReSi creates later at evaluation to pick up a stale curve.
+    """
     utils = importlib.import_module("repsim.benchmark.utils")
     storer_class = utils.ExperimentStorer
     if getattr(storer_class, "_manifold_signal_hook", False):
@@ -189,6 +214,7 @@ def install_signal_storage_hook() -> None:
         overwrite=False,
     ):
         signal = _signal_json(metric, metric_value)
+        rows_before = len(self._new_experiments)
         original(
             self,
             src_single_rep,
@@ -198,18 +224,12 @@ def install_signal_storage_hook() -> None:
             runtime=runtime,
             overwrite=overwrite,
         )
-        if signal is None or self._new_experiments.empty:
+        added = self._new_experiments.index[rows_before:]
+        if signal is None or len(added) == 0:
             return
-        comparison_ids = [
-            self._get_comparison_id(src_single_rep, tgt_single_rep, metric.name),
-        ]
-        if getattr(metric, "is_symmetric", False):
-            comparison_ids.append(
-                self._get_comparison_id(tgt_single_rep, src_single_rep, metric.name)
-            )
-        canonical_id = min(comparison_ids)
-        if canonical_id in self._new_experiments.index:
-            self._new_experiments.loc[canonical_id, "similarity_signal"] = signal
+        # One annotated row per computed pair, even if a future ReSi writes both
+        # directions: the analysis counts a signal once per pair.
+        self._new_experiments.loc[min(added), "similarity_signal"] = signal
 
     storer_class.add_results = add_results_with_signal
     storer_class._manifold_signal_hook = True

@@ -129,14 +129,14 @@ class TestCampaignPreparation(unittest.TestCase):
             # 45 GCN/GraphSAGE/GAT tasks plus 4 cora PGNN ones, and 27
             # archived baselines plus the 4 recreated PGNN parquets.
             # PGNN is cora-only and skips augmentation_test.
-            "resi_graph_campaign.yaml": ("graphs", 49, 31, 11),
+            "resi_graph_campaign.yaml": ("graphs", 49, 31, 20),
             # 35 archived ImageNet100 baselines plus the 33 recreated CIFAR100
             # ones, which are per-architecture because each mfbase parquet
             # holds a single architecture.
-            "resi_vision_campaign.yaml": ("vision", 68, 68, 11),
+            "resi_vision_campaign.yaml": ("vision", 68, 68, 20),
             # 10 archived BERT-L baselines plus the 8 recreated SmolLM2 ones,
             # one per benchmark/dataset since ReSi archives none for that model.
-            "resi_language_campaign.yaml": ("language", 18, 18, 11),
+            "resi_language_campaign.yaml": ("language", 18, 18, 20),
         }
         for filename, (
             domain,
@@ -266,6 +266,16 @@ class TestCampaignPreparation(unittest.TestCase):
                 },
             )
 
+            sqrt_grid = {
+                "MutualKNNAUC": {"min": 0, "max": 64, "num": 8, "scale": "sqrt"}
+            }
+            self.assertEqual(
+                load_campaign(with_sweeps(sqrt_grid)).sweep_overrides()["MutualKNNAUC"][
+                    "scale"
+                ],
+                "sqrt",
+            )
+
             cases = {
                 "not a configured campaign measure": {
                     "NotAMeasure": {"min": 1, "max": 2, "num": 3, "scale": "log"}
@@ -295,6 +305,14 @@ class TestCampaignPreparation(unittest.TestCase):
                         "scale": "log",
                     }
                 },
+                "sqrt scale requires a non-negative min": {
+                    "MutualKNNAUC": {
+                        "min": -1,
+                        "max": 5,
+                        "num": 3,
+                        "scale": "sqrt",
+                    }
+                },
                 "scale must be": {
                     "MutualKNNAUC": {
                         "min": 1,
@@ -308,6 +326,34 @@ class TestCampaignPreparation(unittest.TestCase):
                 with self.subTest(message=message):
                     with self.assertRaisesRegex(ValueError, message):
                         load_campaign(with_sweeps(value))
+
+    def test_grid_defined_measures_require_a_measure_sweeps_entry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            campaign_path = Path(tmp) / "campaign.yaml"
+            campaign = {
+                "version": 1,
+                "domain": "graphs",
+                "quality_measures": ["AUPRC"],
+                "measures": ["CKArbfAUC", "CKArbfAUCSqrt"],
+                "benchmarks": [
+                    {
+                        "id": "augmentation_test",
+                        "dataset": "toy",
+                        "base_config": "configs/base.yaml",
+                        "architectures": ["GCN"],
+                    }
+                ],
+            }
+            _write_yaml(campaign_path, campaign)
+            with self.assertRaisesRegex(ValueError, "CKArbfAUCSqrt.*needs a"):
+                load_campaign(campaign_path)
+
+            campaign["measure_sweeps"] = {
+                "CKArbfAUCSqrt": {"min": 0.05, "max": 10, "num": 100, "scale": "sqrt"}
+            }
+            _write_yaml(campaign_path, campaign)
+            loaded = load_campaign(campaign_path)
+            self.assertEqual(loaded.sweep_overrides()["CKArbfAUCSqrt"]["scale"], "sqrt")
 
     def test_campaigns_without_overrides_omit_the_sweep_field(self):
         entry = ManifestEntry(
@@ -635,7 +681,7 @@ class TestPureImports(unittest.TestCase):
             cwd=str(Path(__file__).resolve().parents[1]),
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout.strip(), "graphs 11")
+        self.assertEqual(result.stdout.strip(), "graphs 20")
 
 
 class _FakeStorer:
@@ -806,7 +852,11 @@ class TestRuntime(unittest.TestCase):
         metric = types.SimpleNamespace(
             name="ManifoldAUC",
             is_symmetric=True,
-            last_similarity_signal={"param_values": [1, 2], "scores": [0.1, 0.2]},
+            last_similarity_signal={
+                "param_values": [1, 2],
+                "scores": [0.1, 0.2],
+                "auc_value": 0.15,
+            },
         )
         storer = _FakeStorer()
         storer.add_results("z", "a", metric, 0.15)
@@ -823,6 +873,53 @@ class TestRuntime(unittest.TestCase):
             storer._new_experiments["metric"] == "FailedAUC"
         ]
         self.assertTrue(failed_rows["similarity_signal"].isna().all())
+
+    def test_signal_hook_annotates_the_row_the_computing_call_wrote(self):
+        """ReSi writes one direction only, and mirrors the other at evaluation."""
+
+        class OneDirectionStorer(_FakeStorer):
+            def add_results(
+                self, src, tgt, metric, metric_value, runtime=None, overwrite=False
+            ):
+                comparison_id = self._get_comparison_id(src, tgt, metric.name)
+                self._new_experiments = pd.concat(
+                    [
+                        self._new_experiments,
+                        pd.DataFrame(
+                            {"id": [comparison_id], "metric_value": [metric_value]},
+                            index=[comparison_id],
+                        ),
+                    ]
+                )
+
+        fake_utils = types.SimpleNamespace(ExperimentStorer=OneDirectionStorer)
+        real_import = runtime.importlib.import_module
+        with mock.patch.object(
+            runtime.importlib,
+            "import_module",
+            side_effect=lambda name: (
+                fake_utils if name == "repsim.benchmark.utils" else real_import(name)
+            ),
+        ):
+            runtime.install_signal_storage_hook()
+        metric = types.SimpleNamespace(
+            name="AUC",
+            is_symmetric=True,
+            last_similarity_signal={"scores": [0.2], "auc_value": 0.2},
+        )
+        storer = OneDirectionStorer()
+        # The computed direction has the larger id; min(ids) would have missed it.
+        storer.add_results("z", "a", metric, 0.2)
+        self.assertEqual(list(storer._new_experiments.index), ["z___a___AUC"])
+        self.assertTrue(
+            pd.notna(storer._new_experiments.loc["z___a___AUC", "similarity_signal"])
+        )
+        # Mirroring an existing result later, with another pair's curve still on
+        # the measure, must not attach that curve to the mirror row.
+        storer.add_results("a", "z", metric, 0.7)
+        self.assertTrue(
+            pd.isna(storer._new_experiments.loc["a___z___AUC", "similarity_signal"])
+        )
 
     def test_baseline_copy_is_immutable_and_only_eval(self):
         with tempfile.TemporaryDirectory() as tmp:

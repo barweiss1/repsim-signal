@@ -6,18 +6,30 @@ quality_measures: [AUPRC, violation_rate, correlation, pearsonr, spearmanr, kend
 measures:
   - MutualKNNTop10
   - CKNNATop10
+  - TSIEuclid
+  - QSIEuclid
   - sRWKArbfSigma05
   - dRWKArbfSigma05
   - CKArbfSigma05
   - CKArbfSigma02
+  - CKArbfSigma04
+  - CKArbfSigma06
+  - CKArbfSigma08
+  - CKArbfSigma10
   - sRWKArbfAUC
   - CKArbfAUC
+  - CKArbfAUCRerun
+  - CKArbfAUCSqrt
+  - CKArbfAUCLin
   - UKArbfAUC
   - dRWKArbfAUC
   - mcRWKArbfAUC
 measure_sweeps:
   sRWKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
   CKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
+  CKArbfAUCRerun: {min: 0.05, max: 10.0, num: 100, scale: log}
+  CKArbfAUCSqrt: {min: 0.05, max: 10.0, num: 100, scale: sqrt}
+  CKArbfAUCLin: {min: 0.05, max: 10.0, num: 100, scale: linear}
   UKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
   dRWKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}
   mcRWKArbfAUC: {min: 0.05, max: 10.0, num: 100, scale: log}

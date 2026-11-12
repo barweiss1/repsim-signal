@@ -25,6 +25,34 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--manifest", required=True)
     run.add_argument("--index", required=True, type=int)
 
+    replay = subparsers.add_parser(
+        "sensitivity-replay",
+        help=(
+            "Re-score the quality measures of one finished compute task under "
+            "the signal variants (sample counts, bandwidth limits)."
+        ),
+    )
+    replay.add_argument("--manifest", required=True)
+    replay.add_argument("--index", required=True, type=int)
+    replay.add_argument(
+        "--sensitivity-config", default="configs/resi_signal_sensitivity.yaml"
+    )
+
+    summary = subparsers.add_parser(
+        "sensitivity-summary",
+        help=(
+            "Rank the signal variants against the reported field and plot how "
+            "the CKA AUC's mean and 90th-percentile rank respond."
+        ),
+    )
+    summary.add_argument("--campaign", required=True)
+    summary.add_argument("--run-name", required=True)
+    summary.add_argument("--analysis-config", metavar="PATH")
+    summary.add_argument(
+        "--sensitivity-config", default="configs/resi_signal_sensitivity.yaml"
+    )
+    summary.add_argument("--out-dir", metavar="PATH")
+
     status = subparsers.add_parser("status", help="Report manifest output completion.")
     status.add_argument("--manifest", required=True)
 
@@ -114,6 +142,67 @@ def main(argv: list[str] | None = None) -> None:
 
             entry = run_task(args.manifest, args.index)
             print(f"completed index={entry.index} result={entry.result_path}")
+            return
+        if args.command == "sensitivity-replay":
+            from .sensitivity_replay import replay_task
+            from .signal_sensitivity import load_sensitivity_config
+
+            csv_path = replay_task(
+                args.manifest,
+                args.index,
+                load_sensitivity_config(args.sensitivity_config),
+            )
+            print(f"completed index={args.index} variant_csv={csv_path}")
+            return
+        if args.command == "sensitivity-summary":
+            from .analysis.cli import resolve_settings
+            from .analysis.sensitivity import (
+                summarize_bandwidths,
+                summarize_paired_bandwidths,
+                summarize_sensitivity,
+            )
+            from .analysis.sensitivity_figures import (
+                plot_bandwidths,
+                plot_paired_bandwidths,
+                plot_sensitivity,
+            )
+            from .signal_sensitivity import load_sensitivity_config
+
+            settings = resolve_settings(args.analysis_config)
+            sensitivity = load_sensitivity_config(args.sensitivity_config)
+            target, table = summarize_sensitivity(
+                args.campaign,
+                args.run_name,
+                settings,
+                sensitivity,
+                out_dir=args.out_dir,
+            )
+            plot_sensitivity(table, sensitivity, target, rank_scale=settings.rank_scale)
+            print(table.to_string(index=False))
+            if sensitivity.bandwidths is not None:
+                _target, bandwidths = summarize_bandwidths(
+                    args.campaign,
+                    args.run_name,
+                    settings,
+                    sensitivity,
+                    out_dir=target,
+                )
+                plot_bandwidths(
+                    bandwidths, sensitivity, target, rank_scale=settings.rank_scale
+                )
+                print(bandwidths.to_string(index=False))
+                _target, paired = summarize_paired_bandwidths(
+                    args.campaign,
+                    args.run_name,
+                    settings,
+                    sensitivity,
+                    out_dir=target,
+                )
+                plot_paired_bandwidths(
+                    paired, sensitivity, target, rank_scale=settings.rank_scale
+                )
+                print(paired.to_string(index=False))
+            print(f"sensitivity={target}")
             return
         if args.command == "status":
             from .status import manifest_status

@@ -41,7 +41,8 @@ class TestLabels(unittest.TestCase):
     def test_our_measures_are_named_as_mathematics_not_as_classes(self):
         """A reader meets `CKArbfAUC` nowhere in the paper; these are the names."""
         self.assertEqual(
-            measure_label("CKArbfAUC"), r"$\mathrm{AUC}(\boldsymbol{s}_\mathrm{CKA})$"
+            measure_label("CKArbfAUC"),
+            r"$\mathrm{AUC}_{\mathrm{log}}(\boldsymbol{s}_\mathrm{CKA})$",
         )
         self.assertEqual(
             measure_label("dRWKArbfAUC"),
@@ -53,6 +54,17 @@ class TestLabels(unittest.TestCase):
             measure_label("CKArbfSigma02"), r"$\mathrm{CKA}_{\mathrm{RBF},0.2}$"
         )
         self.assertEqual(measure_label("CKA"), r"$\mathrm{CKA}_\mathrm{lin}$")
+        self.assertEqual(
+            measure_label("CKArbfSigma04"), r"$\mathrm{CKA}_{\mathrm{RBF},0.4}$"
+        )
+        self.assertEqual(
+            measure_label("CKArbfSigma10"), r"$\mathrm{CKA}_{\mathrm{RBF},1}$"
+        )
+        self.assertEqual(measure_label("TSIEuclid"), r"$\mathrm{TSI}$")
+        self.assertEqual(
+            measure_label("CKArbfAUC"),
+            r"$\mathrm{AUC}_{\mathrm{log}}(\boldsymbol{s}_\mathrm{CKA})$",
+        )
 
     def test_the_random_walk_alignments_keep_their_trailing_a(self):
         """They are alignments, like the CKA and UKA beside them on the axis."""
@@ -124,6 +136,14 @@ class TestColors(unittest.TestCase):
         self.assertEqual(measure_color("CKArbfAUC"), signal)
         self.assertEqual(measure_color("UKArbfAUC"), signal)
         self.assertNotEqual(measure_color("CKArbfAUC"), UNKNOWN_CATEGORY_COLOR)
+
+    def test_the_ordinal_indices_are_neighbors_by_label_and_by_name(self):
+        """They belong beside MNN, and a printed label resolves to the same family."""
+        neighbors = MEASURE_CATEGORY_COLORS["Neighbors"]
+        for name in ("TSIEuclid", "QSIEuclid"):
+            with self.subTest(name=name):
+                self.assertEqual(measure_color(name), neighbors)
+                self.assertEqual(measure_color(measure_label(name)), neighbors)
 
     def test_manifold_measures_do_not_share_one_colour(self):
         """They span three categories; one bucket would assert a family."""
