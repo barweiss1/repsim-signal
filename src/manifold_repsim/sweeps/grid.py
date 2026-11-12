@@ -12,7 +12,7 @@ import numpy as np
 from manifold_repsim.metrics.registry import get_metric_spec
 from manifold_repsim.metrics.registry import get_sweep_parameter_default
 
-GRID_SCALES = frozenset({"linear", "log"})
+GRID_SCALES = frozenset({"linear", "log", "sqrt"})
 
 
 @dataclass(frozen=True)
@@ -21,6 +21,8 @@ class SweepGridConfig:
 
     Exact grids define only ``values``. Generated grids define ``minimum``,
     ``maximum``, ``num``, and ``scale``. The two forms are mutually exclusive.
+    ``scale`` is the variable in which the points are equally spaced: ``linear``
+    (the value), ``log`` (its logarithm), or ``sqrt`` (its square root).
     """
 
     values: tuple[int | float, ...] | None = None
@@ -62,9 +64,11 @@ class SweepGridConfig:
         if int(self.num) < 2:
             raise ValueError("Sweep grid num must be at least 2.")
         if self.scale not in GRID_SCALES:
-            raise ValueError("Sweep grid scale must be 'linear' or 'log'.")
+            raise ValueError("Sweep grid scale must be 'linear', 'log', or 'sqrt'.")
         if self.scale == "log" and minimum <= 0:
             raise ValueError("A log sweep grid requires a positive min.")
+        if self.scale == "sqrt" and minimum < 0:
+            raise ValueError("A sqrt sweep grid requires a non-negative min.")
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> "SweepGridConfig":
@@ -172,6 +176,14 @@ def resolve_metric_sweep_grid(
         values = np.asarray(grid.values, dtype=float)
     elif grid.scale == "log":
         values = np.geomspace(grid.minimum, grid.maximum, num=grid.num)
+    elif grid.scale == "sqrt":
+        # Equal steps in sqrt(value), squared back; the endpoints are pinned
+        # because squaring a rounded root need not reproduce them exactly.
+        values = np.linspace(
+            math.sqrt(grid.minimum), math.sqrt(grid.maximum), num=grid.num
+        )
+        values = values**2
+        values[0], values[-1] = grid.minimum, grid.maximum
     else:
         values = np.linspace(grid.minimum, grid.maximum, num=grid.num)
     values = _coerce_metric_values(spec.sweep.name, values, exact=exact)

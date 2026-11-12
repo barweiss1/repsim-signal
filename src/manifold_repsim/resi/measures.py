@@ -25,6 +25,10 @@ class ResiMeasureSpec:
     category: str
     metric_kwargs: tuple[tuple[str, Any], ...] = ()
     clamp_topk: bool = False
+    # AUC measures whose whole point is the sampling grid: without a campaign
+    # measure_sweeps entry they would silently fall back to the registry grid
+    # and duplicate another measure, so campaign validation insists on one.
+    requires_sweep_grid: bool = False
 
     def kwargs(self) -> dict[str, Any]:
         """Return a fresh mutable copy of the fixed metric arguments."""
@@ -35,6 +39,13 @@ class ResiMeasureSpec:
         """Return whether this measure sweeps a parameter and records a signal."""
         return self.kind == "auc"
 
+
+# The ordinal indices count every pair of distance comparisons, so the exact
+# QSI over all 10^4 rows of a large task needs tens of gigabytes. They score a
+# seeded shared subset of at most this many rows instead -- exactly, not
+# approximately -- and smaller comparisons are untouched. Changing it changes
+# those measures' numbers, so it needs a recompute of them.
+ORDINAL_MAX_POINTS = 2000
 
 RESI_MEASURE_SPECS = (
     ResiMeasureSpec(
@@ -51,6 +62,20 @@ RESI_MEASURE_SPECS = (
         kind="fixed",
         category="Neighbors",
         clamp_topk=True,
+    ),
+    ResiMeasureSpec(
+        class_name="TSIEuclid",
+        metric_name="tsi",
+        kind="fixed",
+        category="Neighbors",
+        metric_kwargs=(("max_points", ORDINAL_MAX_POINTS),),
+    ),
+    ResiMeasureSpec(
+        class_name="QSIEuclid",
+        metric_name="qsi",
+        kind="fixed",
+        category="Neighbors",
+        metric_kwargs=(("max_points", ORDINAL_MAX_POINTS),),
     ),
     ResiMeasureSpec(
         class_name="RWKArbfSigma05",
@@ -99,6 +124,34 @@ RESI_MEASURE_SPECS = (
         metric_kwargs=(("rbf_sigma", 0.2),),
     ),
     ResiMeasureSpec(
+        class_name="CKArbfSigma04",
+        metric_name="cka_rbf",
+        kind="fixed",
+        category="RSM",
+        metric_kwargs=(("rbf_sigma", 0.4),),
+    ),
+    ResiMeasureSpec(
+        class_name="CKArbfSigma06",
+        metric_name="cka_rbf",
+        kind="fixed",
+        category="RSM",
+        metric_kwargs=(("rbf_sigma", 0.6),),
+    ),
+    ResiMeasureSpec(
+        class_name="CKArbfSigma08",
+        metric_name="cka_rbf",
+        kind="fixed",
+        category="RSM",
+        metric_kwargs=(("rbf_sigma", 0.8),),
+    ),
+    ResiMeasureSpec(
+        class_name="CKArbfSigma10",
+        metric_name="cka_rbf",
+        kind="fixed",
+        category="RSM",
+        metric_kwargs=(("rbf_sigma", 1.0),),
+    ),
+    ResiMeasureSpec(
         class_name="MutualKNNAUC",
         metric_name="mutual_knn",
         kind="auc",
@@ -128,6 +181,34 @@ RESI_MEASURE_SPECS = (
         metric_name="cka_rbf",
         kind="auc",
         category="Signal",
+    ),
+    # CKArbfAUC computed a second time, under a new name so ReSi does not skip
+    # it. The first run stored the wrong similarity curve on most cross-group
+    # comparisons (see the signal-hook note in resi/runtime.py); this one stores
+    # every pair's own curve, which is what the signal-sensitivity analysis
+    # re-reduces. Its scalar AUC must equal CKArbfAUC exactly.
+    ResiMeasureSpec(
+        class_name="CKArbfAUCRerun",
+        metric_name="cka_rbf",
+        kind="auc",
+        category="Signal",
+    ),
+    # The same CKA sweep as CKArbfAUC (equally spaced in log sigma), sampled
+    # on grids equally spaced in sqrt(sigma) and in sigma itself. The grids
+    # come from the campaign's measure_sweeps; the sampling is the weighting.
+    ResiMeasureSpec(
+        class_name="CKArbfAUCSqrt",
+        metric_name="cka_rbf",
+        kind="auc",
+        category="Signal",
+        requires_sweep_grid=True,
+    ),
+    ResiMeasureSpec(
+        class_name="CKArbfAUCLin",
+        metric_name="cka_rbf",
+        kind="auc",
+        category="Signal",
+        requires_sweep_grid=True,
     ),
     ResiMeasureSpec(
         class_name="sRWKArbfAUC",

@@ -34,6 +34,10 @@ from manifold_repsim.resi.analysis.config import (  # noqa: E402
     DEFAULT_RANK_SCALE,
     RANK_SCALES,
     RANK_SORTS,
+    label_overrides,
+)
+from manifold_repsim.resi.analysis.settings import (  # noqa: E402
+    load_analysis_settings,
 )
 from manifold_repsim.resi.analysis.cross_domain import (  # noqa: E402
     ALL_TASKS,
@@ -84,6 +88,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument(
+        "--analysis-config",
+        type=Path,
+        metavar="PATH",
+        help=(
+            "Analysis settings YAML whose `measure_labels` rename measures in "
+            "these figures and tables, so they read as the per-domain figures "
+            "built from the same config do."
+        ),
+    )
+    parser.add_argument(
         "--box-style",
         choices=BOX_STYLES,
         default=DEFAULT_BOX_STYLE,
@@ -126,7 +140,14 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     args = parser.parse_args(argv)
+    settings = (
+        load_analysis_settings(args.analysis_config) if args.analysis_config else None
+    )
+    with label_overrides(dict(settings.measure_labels) if settings else {}):
+        return _run(parser, args)
 
+
+def _run(parser: argparse.ArgumentParser, args: argparse.Namespace) -> int:
     frames: dict[str, pd.DataFrame] = {}
     rank_frames: dict[str, pd.DataFrame] = {}
     for name, directory in args.domain:

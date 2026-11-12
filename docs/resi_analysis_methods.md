@@ -203,6 +203,25 @@ from analysis, and reported in the coverage report rather than silently dropped:
   order, which makes those values an artifact of storage layout rather than
   geometry. **[missing]**
 
+What the exclusion does and does not remove. It is declared per model, so it
+applies to every measure, including the later ones. For the signal measures it
+drops every curve involving the model. For the scalar quality scores
+(`violation_rate`, `AUPRC`) the numbers in `results_full.csv` are computed by
+ReSi itself, which discards only NaN comparisons. A measure that fails on the
+collapsed checkpoint (every measure whose rows are NaN there) therefore loses
+that model's comparisons from its score automatically. A measure that still
+returns a finite number for it keeps those comparisons in its ReSi score. On
+`ViT_B32 / seed 0` the measures that return finite values are `MutualKNNTop10`,
+`CKNNATop10`, `CKArbfSigma02` and, added later, the two ordinal indices
+`TSIEuclid` and `QSIEuclid`. The ordinal indices are
+rank based, so they are expected to pick up the same tie-breaking artifact as the
+two neighbour measures (not separately verified). The measures that fail (NaN for
+all 28 comparisons involving the model) are `CKArbfSigma05`, `sRWKArbfSigma05`,
+`dRWKArbfSigma05` and the five AUC measures `CKArbfAUC`, `UKArbfAUC`,
+`sRWKArbfAUC`, `dRWKArbfAUC`, `mcRWKArbfAUC`; the sampling-grid measures
+`CKArbfAUCSqrt` and `CKArbfAUCLin` are kernel sweeps and are expected to fail
+the same way. `ViT_L32 / seed 4` fails for all measures.
+
 The second is worth a sentence in the paper: it is a failure mode that
 *silently produces plausible numbers* for neighbour measures. It is the reason
 `resolve_rbf_base_bandwidth` carries a representation-scaled distance floor
@@ -215,7 +234,8 @@ instead of an absolute constant.
 All ten operate on the same input contract as ReSi's measures: two
 representation matrices $X \in \mathbb{R}^{n \times p}$, $Y \in \mathbb{R}^{n \times q}$
 over the same $n$ inputs, flattened through ReSi's own `flatten` helper, with
-larger = more similar.
+larger = more similar. Section 3.5 adds four more, which no reported run has
+computed yet.
 
 ### 3.1 Fixed-parameter measures (5)
 
@@ -266,6 +286,155 @@ The full 100-point curve is retained on `last_similarity_signal` and embedded as
 JSON in the result row before checkpointing, so every AUC value is auditable and
 the curves themselves are a second, independent result (`signals_long.csv`).
 
+**Sampling grids for the CKA signal.** Reviewers suggested weighting the
+bandwidth average by $w(\sigma) = \sigma^\alpha$. The same effect is obtained,
+with no weights, by changing where the curve is sampled. A mean over points
+equally spaced in $u = \sigma^p$ estimates $\int \rho\, du$ up to a constant,
+and $du = \sigma^{p-1}\,d\sigma$, so the grid itself is the weighting:
+
+| $\alpha = p$ | measure | points equally spaced in | density in $\sigma$ | points at $\sigma \le 1$ / $\ge 5$ |
+|---|---|---|---|---|
+| 0 | `CKArbfAUC` (displayed $\mathrm{AUC}_{\log}$) | $\log\sigma$ | $\sigma^{-1}$ | 56 / 13 |
+| 0.5 | `CKArbfAUCSqrt` ($\mathrm{AUC}_{\sqrt{}}$) | $\sqrt\sigma$ | $\sigma^{-1/2}$ | 27 / 32 |
+| 1 | `CKArbfAUCLin` ($\mathrm{AUC}_{\mathrm{lin}}$) | $\sigma$ | $\sigma^{0}$ | 10 / 50 |
+
+All three use 100 points on $[0.05, 10]$ and the same plain mean, so only the
+spacing differs. The grids are `scale: log`, `scale: sqrt` (equal steps in
+$\sqrt\sigma$, squared back, endpoints pinned) and `scale: linear` in the
+campaign's `measure_sweeps`. Moving from log to linear shifts weight from the
+small-bandwidth end to the large-bandwidth (linear-CKA) end. A grid changes
+where the metric is evaluated, so each of `CKArbfAUCSqrt` and `CKArbfAUCLin`
+needs its own CKA-RBF sweep; they cannot be read off the stored log curve
+without interpolating. Their stored signal records `grid_scale`. Campaign
+validation requires a `measure_sweeps` entry for both, since without one they
+would silently fall back to the registry's log grid and duplicate `CKArbfAUC`.
+
+**Single-bandwidth CKA at $\sigma \in \{0.4, 0.6, 0.8, 1.0\}$.** To see how each
+bandwidth alone does on the benchmark, the campaigns also compute
+`CKArbfSigma04`, `CKArbfSigma06`, `CKArbfSigma08` and `CKArbfSigma10` beside the
+existing `CKArbfSigma02` and `CKArbfSigma05` (the analysis configs do not report
+them; naming them under `measures` is enough). They are fixed measures, not
+slices of the stored curve: the curve's grid is log-spaced from 0.05 to 10 and
+contains none of these bandwidths exactly, so a single-bandwidth score cannot be
+read off it without interpolating.
+
+**Sensitivity to the number of samples and to the bandwidth limits.** Reviewers
+asked whether the ranking of $\mathrm{AUC}_{\log}(s_\mathrm{CKA})$ depends on how
+many grid points it averages and on the interval $[0.05, 10]$. Each variant is
+the plain mean of the stored 100-point log curve over a subset of its points, so
+no similarity is recomputed:
+
+| variant | points kept |
+|---|---|
+| `samples100` | all 100 (the unchanged measure) |
+| `samples75` / `samples50` / `samples25` | `round(linspace(0, 99, k))`, both ends kept |
+| `left` $[0.2, 10]$ | the 74 stored points with $\sigma \ge 0.2$ (first $\sigma = 0.201$) |
+| `right` $[0.05, 2.5]$ | the 74 stored points with $\sigma \le 2.5$ (last $\sigma = 2.487$) |
+
+Sub-sampling the stored points is not the same as a fresh grid of that size
+(its points sit at slightly different bandwidths), but on a smooth curve the
+means agree closely and no re-extraction is needed. The clipped intervals use
+the stored grid points that fall inside them, so their end points are the
+nearest stored $\sigma$, not exactly 0.2 or 2.5.
+
+`resi.py sensitivity-replay` re-scores the quality measures of one finished
+compute task for all variants through ReSi's own evaluation (`only_eval`, no
+representation extraction): it writes a scratch copy of the task's result store
+with the derived variant rows under `manifold-sensitivity/<scratch_name>/` in the
+results root and never touches the original. `resi.py sensitivity-summary` then
+puts each variant in the place of `CKArbfAUC` in the reported field, so the
+field and its size stay fixed, and ranks it with the same coverage filters and
+within-case ranking as the main analysis. It writes `sensitivity_summary.csv`
+(mean rank and 90th-percentile rank over cases, position among the measures, case
+count) and one line plot per analysis (`samples.png`, `limits.png`) per domain.
+The `stored` row is the unchanged `CKArbfAUC` of the main analysis; `samples100`
+must land on it, which fails only where the benchmark is so tied that a
+$10^{-9}$ difference flips comparisons (observed on Cora/GCN, where the measures
+are near chance).
+
+Mean rank of $\mathrm{AUC}_{\log}$ in the reported field (lower is better; 90th
+percentile of the per-case rank in brackets), 2026-11 run. `stored` is the main
+analysis' `CKArbfAUC`; the gap between it and `samples100`, the same measure
+recomputed under the fixed hook, is the run-to-run noise floor.
+
+| | graphs (49 cases) | vision (80) | language (20) |
+|---|---|---|---|
+| stored | 7.54 (11.2) | 7.93 (12.1) | 8.45 (14.0) |
+| 100 samples | 7.48 (11.2) | 8.00 (12.1) | 8.45 (14.0) |
+| 75 | 7.50 (11.2) | 7.98 (12.1) | 8.45 (14.0) |
+| 50 | 7.48 (11.2) | 8.04 (12.5) | 8.45 (14.0) |
+| 25 | 7.43 (11.2) | 8.03 (12.5) | 8.30 (14.0) |
+| $[0.2, 10]$ | 7.91 (13.0) | 7.94 (12.0) | 7.12 (11.2) |
+| $[0.05, 2.5]$ | 6.86 (10.7) | 7.84 (12.0) | 9.07 (16.1) |
+
+The sample count moves the mean rank by at most 0.15 (language at 25 samples),
+which is about the noise floor. Clipping the range moves it more, and in
+different directions by domain: dropping the small bandwidths helps language
+(7th to 1st of 20) and hurts graphs; dropping the large ones helps graphs (3rd to
+1st) and hurts language. Vision is insensitive to both. The sensitivity run
+ranks every variant against the same 19 other measures with the same coverage
+filters, restricted to the comparisons the stored measure scored (including the
+main analysis' `exclude_functional_measures`).
+
+**Single bandwidths against the swept measure.** `sensitivity-summary` also ranks
+each of `CKArbfSigma02 / 04 / 05 / 06 / 08 / 10` and `CKArbfAUC` in one shared
+field: the reported measures minus the AUC and minus all six single bandwidths,
+plus the measure under test, so every candidate meets the same competitors in a
+field of the same size (19 for graphs and language, 18 for vision) and none
+appears twice. The values come from the main results; nothing is replayed.
+Output: `bandwidth_summary.csv` and `bandwidths.png` (mean rank solid, 90th
+percentile dashed, the AUC as flat reference lines).
+
+Mean rank (90th percentile in brackets), lower is better:
+
+| | graphs | vision | language |
+|---|---|---|---|
+| AUC (swept) | 7.10 (10.2) | 7.62 (12.0) | 8.20 (13.1) |
+| $\sigma = 0.2$ | 8.37 (17.0) | 11.16 (17.1) | 11.61 (18.0) |
+| 0.4 | 6.67 (11.1) | 7.46 (13.0) | 7.18 (11.7) |
+| 0.5 | 6.66 (11.9) | 7.45 (12.0) | 7.29 (15.8) |
+| 0.6 | 6.61 (11.0) | 7.64 (13.0) | 7.36 (17.0) |
+| 0.8 | 6.96 (11.0) | 8.04 (12.6) | 7.35 (12.5) |
+| 1.0 | 7.32 (12.0) | 8.32 (13.0) | 7.17 (12.3) |
+
+$\sigma = 0.2$ is clearly the worst everywhere. From 0.4 to 1.0 a single bandwidth
+matches or slightly beats the AUC on mean rank (by at most about 0.5 on graphs
+and 1 on language) but has a worse 90th-percentile rank in most places, the AUC
+being the more robust of the two; which single bandwidth is best differs by
+domain. These numbers are in a different field from the sensitivity table above
+(AUC and the six bandwidths removed from the other measures), so the AUC's rank
+differs from its `stored` row there.
+
+**The AUC's rank depends on the rival.** In the unpaired field above the AUC is
+alone with the common rest, so its rank is one number whatever bandwidth it is set
+against. `sensitivity-summary` therefore also ranks the AUC and one single
+bandwidth *together*: for each $\sigma$ the field is the common rest, the AUC and
+that $\mathrm{CKA}_{\mathrm{RBF},\sigma}$ (one measure larger than the unpaired
+field: 20 for graphs and language, 19 for vision). The AUC's rank now moves with
+the rival, because the rival takes places from the other measures and the AUC's
+rank is relative to them. Output: `bandwidth_paired_summary.csv` (two rows per
+$\sigma$) and `bandwidths_paired.png` (single bandwidth solid, AUC dashed; mean in
+blue, 90th percentile in orange). Mean rank of the AUC in each paired field is
+7.5 to 7.7 on graphs, 7.9 to 8.2 on vision and 8.5 to 8.9 on language: it varies
+by about 0.2 to 0.4, much less than the single bandwidth does.
+
+**The curves must be the pair's own.** Replay needs each comparison's own curve.
+The curves stored by `CKArbfAUC` and every other AUC measure before 2026-11-10
+are not reliable on cross-group pairs in the group-separation tasks (augmentation,
+random-label, shortcut): ReSi's `add_results` writes one
+direction of a symmetric comparison and creates the mirror row later, during
+evaluation, by calling the measure again, so the signal hook attached the last
+in-group curve to those rows. The AUC *scalars* are correct (the hook was only
+wrong about the curve that travels with them), so every ranking is unaffected;
+only signal plots and anything re-reduced from the stored curves are. The hook
+now annotates the row written by the computing call and rejects a curve whose
+own mean disagrees with the row's value. Because the old rows cannot be
+repaired, the sensitivity study reads `CKArbfAUCRerun`, a second copy of the
+same measure (same metric, same 100-point log grid) computed under the fixed
+hook. Its scalar matches `CKArbfAUC` to about $10^{-5}$ (float and device
+nondeterminism, not a different definition). It is in the campaigns but not in the
+reported field.
+
 `mcRWKArbfAUC` and `dRWKArbfAUC` were built as a deliberate pair: mean
 centering annihilates the constant and both norm terms of the large-bandwidth
 kernel expansion, so `mcRWKArbfAUC` should tend to linear CKA as $s \to \infty$;
@@ -288,7 +457,9 @@ to $s = 0.5$ -- and `mcRWKArbfAUC`. Restoring any of them is a one-line config
 edit and no recomputation. **[no principled reason -- field size]**
 
 That leaves **7 manifold measures reported**: `MutualKNNTop10`, `CKNNATop10`,
-`CKArbfSigma02`, `sRWKArbfAUC`, `CKArbfAUC`, `UKArbfAUC`, `dRWKArbfAUC`.
+`CKArbfSigma02`, `sRWKArbfAUC`, `CKArbfAUC`, `UKArbfAUC`, `dRWKArbfAUC`. The
+analysis configs now name two more, the ordinal indices of 3.5; every rank in
+this document predates them and will change once they are computed.
 (`CKArbfSigma05` was dropped later, in favour of the `CKArbfSigma02` added to
 check its undermotivated bandwidth -- see 7.3.)
 
@@ -301,7 +472,61 @@ changes every rank in the domain. The analysis has to be re-run; an existing
 No approximation is used anywhere in the reported runs. Subsampling exists
 (`MANIFOLD_RESI_MAX_POINTS`, `MANIFOLD_RESI_AUC_MAX_POINTS`) but is opt-in via
 environment variables and was never set. Optimized and naive score paths are
-tested to agree.
+tested to agree. The one exception is the ordinal indices of 3.5, which carry a
+row cap of their own; no reported run includes them yet.
+
+### 3.5 Ordinal indices: TSI and QSI (2)
+
+After Soares et al., *Scalable and Interpretable Representation Alignment with
+Ordinal Similarity* (ICML 2026). They compare **orderings of distances**, not
+distances, so they have no scale or bandwidth to choose.
+
+| Name | Definition | Category |
+|---|---|---|
+| `TSIEuclid` (TSI) | $\Pr_{(i,j,k)}\big[\operatorname{sign}(d_X(i,j)-d_X(i,k)) = \operatorname{sign}(d_Y(i,j)-d_Y(i,k))\big]$ over distinct triples | Neighbors |
+| `QSIEuclid` (QSI) | the same over distinct quadruples, comparing $d(i,j)$ with $d(k,l)$ | Neighbors |
+
+Both order by Euclidean distance and are displayed as plain TSI and QSI. An
+inner-product variant (`TSIInner`, `QSIInner`) was registered for a while and
+removed from the ReSi layer: ordering by inner product reverses the order in
+both spaces, which leaves agreement unchanged, so it added a measure without
+adding information. The `tsi_ip` / `qsi_ip` aliases remain in the metric
+registry. They sit in Neighbors because perfect TSI is equivalent to mutual-neighbour overlap of 1 at
+**every** $k$ from 1 to $n-2$ at once (the paper's Corollary 1): the same move
+the swept measures make, with no sweep to configure.
+
+**Ties are a third outcome, never broken.** $\operatorname{sign}$ takes the
+value $0$ on equal distances. A tie in both spaces counts as agreement, a tie in
+one space only counts as disagreement, and no comparison leaves the
+denominator. Duplicate rows are therefore well defined, and a representation
+with many tied distances (like the collapsed `ViT_B32 / randomlabel / seed 0`
+above) has them counted as ties rather than ordered by index, which is what the
+neighbour measures do. The independent-representation baseline is
+$t_X t_Y + \tfrac12(1-t_X)(1-t_Y)$ with $t$ the tie probability in each space
+(the paper's Lemma 1): $\tfrac12$ without ties, above it when both spaces tie
+often, and *below* it when only one does, since a one-sided tie is a
+disagreement. Heavy ties therefore move the score, visibly.
+
+**What counts as equal.** Two entries tie when they differ by less than their
+float64 accumulation error, $4 \cdot p \cdot \varepsilon_{64} \cdot \max|d|$ for
+$p$ feature dimensions. Distances come from row differences, not the
+$|x|^2+|y|^2-2\langle x,y\rangle$ expansion: on continuous data at offset $10^6$
+the expansion turns a true distance of $0$ between duplicate rows into $0.18$,
+which would dissolve the ties being counted. The tolerance is deliberately
+**not** sized to the input dtype or the data spread. An earlier version used the
+float32 quantization step; it chained 1.25$\times10^7$ densely spaced distances
+into spurious ties and scored independent representations at $0.458$ for QSI
+instead of $0.5$.
+
+**Computation is exact, on at most 2000 rows.** Counting uses the paper's
+adjusted Kendall tau with exact integer arithmetic ($O(n^2 \log n)$ time for
+both; QSI needs $O(n^2)$ memory). At $n = 10^4$ exact QSI needs tens of
+gigabytes, so each comparison scores one seeded row subset shared by both
+representations when it has more than `ORDINAL_MAX_POINTS = 2000` rows (in
+`resi/measures.py`). The score on that subset is exact, not an estimate;
+the cap itself is the approximation. Cora (1000 rows) and SST-2 (872) are scored
+whole; Flickr, ogbn-arxiv and MNLI (about $10^4$) are subsampled. Changing the
+constant changes these four measures' numbers.
 
 ---
 

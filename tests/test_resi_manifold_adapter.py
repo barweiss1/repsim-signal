@@ -42,6 +42,27 @@ class TestReSiManifoldAdapter(unittest.TestCase):
                     self.assertIsInstance(value, float)
                     self.assertTrue(math.isfinite(value))
 
+    def test_fixed_bandwidth_measures_score_cka_rbf_at_their_sigma(self):
+        """Each CKArbfSigmaNN is plain RBF CKA at that bandwidth multiplier."""
+        sigmas = {
+            "CKArbfSigma02": 0.2,
+            "CKArbfSigma04": 0.4,
+            "CKArbfSigma05": 0.5,
+            "CKArbfSigma06": 0.6,
+            "CKArbfSigma08": 0.8,
+            "CKArbfSigma10": 1.0,
+        }
+        scores = {}
+        for name, sigma in sigmas.items():
+            with self.subTest(measure=name):
+                expected = AlignmentMetrics.measure(
+                    "cka_rbf", self.R, self.Rp, rbf_sigma=sigma
+                )
+                value = getattr(adapter, name)()(self.R, self.Rp, "nd")
+                self.assertAlmostEqual(value, expected, places=5)
+                scores[name] = value
+        self.assertEqual(len({round(v, 6) for v in scores.values()}), len(sigmas))
+
     def test_fixed_knn_clamps_topk_for_small_inputs(self):
         for measure_class in (
             adapter.MutualKNNTop10,
@@ -148,6 +169,48 @@ class TestReSiManifoldAdapter(unittest.TestCase):
         with self.assertRaises(ValueError):
             measure(self.R, bad, "nd")
         self.assertIsNone(measure.last_similarity_signal)
+
+    def test_log_sqrt_and_linear_cka_auc_sample_different_grids(self):
+        grids = {
+            adapter.CKArbfAUC: ("log", 0.05, 10.0),
+            adapter.CKArbfAUCSqrt: ("sqrt", 0.05, 10.0),
+            adapter.CKArbfAUCLin: ("linear", 0.05, 10.0),
+        }
+        signals = {}
+        for measure_class, (scale, low, high) in grids.items():
+            measure = measure_class()
+            measure.sweep_grid = {"min": low, "max": high, "num": 8, "scale": scale}
+            value = measure(self.R, self.Rp, "nd")
+            signal = measure.last_similarity_signal
+            signals[scale] = signal
+            with self.subTest(scale=scale):
+                params = np.asarray(signal["param_values"])
+                self.assertEqual(len(params), 8)
+                self.assertAlmostEqual(params[0], low)
+                self.assertAlmostEqual(params[-1], high)
+                self.assertEqual(signal["grid_scale"], scale)
+                self.assertEqual(signal["logscale"], scale == "log")
+                self.assertEqual(signal["integration_method"], "average")
+                # The AUC is the plain mean of the curve on that grid.
+                self.assertAlmostEqual(value, float(np.mean(signal["scores"])))
+        self.assertNotEqual(
+            signals["log"]["param_values"], signals["sqrt"]["param_values"]
+        )
+        self.assertNotEqual(
+            signals["sqrt"]["param_values"], signals["linear"]["param_values"]
+        )
+        roots = np.sqrt(signals["sqrt"]["param_values"])
+        np.testing.assert_allclose(np.diff(roots), np.diff(roots)[0], rtol=1e-9)
+
+    def test_grid_defined_cka_measures_are_signal_measures_needing_a_grid(self):
+        for name in ("CKArbfAUCSqrt", "CKArbfAUCLin"):
+            with self.subTest(measure=name):
+                measure_class = getattr(adapter, name)
+                self.assertEqual(measure_class.metric_name, "cka_rbf")
+                self.assertEqual(measure_category(name), "Signal")
+                self.assertIn(name, LOCAL_MANIFOLD_MEASURES)
+                self.assertTrue(get_measure_spec(name).requires_sweep_grid)
+        self.assertFalse(get_measure_spec("CKArbfAUC").requires_sweep_grid)
 
     def test_prepared_auc_matches_direct_curve(self):
         with mock.patch.dict(

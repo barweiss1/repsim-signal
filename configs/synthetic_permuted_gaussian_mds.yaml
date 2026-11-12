@@ -46,7 +46,7 @@ metrics:
   signals:
     names: [cka_rbf, rbf_uka, rbf_rwka_symmetric, rbf_degree_crwka]
     parameter: rbf_sigma
-    min: 0.01
+    min: 0.005
     max: 5.0
     num: 30
     scale: log
@@ -56,6 +56,24 @@ metrics:
       cluster_mixing_probability: 0.1
       noise_scale: 0.2
       n_permute: 4
+  # The single comparison the paper's signal-shape figures draw. Independent
+  # of `grid`, so it may name a level the swept grid does not contain.
+  signal_shapes:
+    fixed_parameters:
+      cluster_mixing_probability: 0.0
+      noise_scale: 0.2
+      n_permute: 4
+  # Base against itself with one point translated. Its own bandwidth grid:
+  # an RBF kernel cannot see the moved point until sigma is comparable to the
+  # translation distance, well past the range the parameter sweeps need.
+  outlier_sweep:
+    distances: [5, 10, 20, 30]
+    point_index: 0
+    signals:
+      min: 0.005
+      max: 50.0
+      num: 30
+      scale: log
 
 mds:
   random_state: 42

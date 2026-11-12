@@ -24,6 +24,8 @@ from .neighbors import compute_knn_accuracy
 from .neighbors import compute_nearest_neighbors
 from .neighbors import cycle_knn
 from .neighbors import mutual_knn
+from .neighbors import qsi
+from .neighbors import tsi
 from .prepared import PreparedMetricCurve, PreparedMetricPair
 from .prepared import metric_feature_matrix
 from .prepared import prepare_metric_curve
@@ -96,6 +98,7 @@ __all__ = [
     "prepare_metric_curve",
     "prepare_metric_pair",
     "prepare_rbf_kernel_for_metric",
+    "qsi",
     "rbf_crwka",
     "rbf_degree_crwka",
     "rbf_rwka",
@@ -115,5 +118,6 @@ __all__ = [
     "svcca",
     "supports_prepared_curve",
     "supports_prepared_metric",
+    "tsi",
     "unbiased_cka",
 ]

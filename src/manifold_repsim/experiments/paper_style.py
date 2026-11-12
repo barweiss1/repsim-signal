@@ -68,6 +68,10 @@ OPACITY_SWATCH_GRAY = 0.15
 EMBEDDING_GRID_FIGSIZE: tuple[float, float] = (24.0, 4.5)
 EMBEDDING_GRID_RECT: tuple[float, float, float, float] = (0.0, 0.0, 0.8, 1.0)
 SIGNAL_ROW_FIGSIZE: tuple[float, float] = (24.0, 4.5)
+# One standalone signal panel, sized to match a single column of
+# SIGNAL_ROW_FIGSIZE's 1x3 row, with extra height since it carries its own
+# x-label and legend rather than sharing a row's.
+SIGNAL_SHAPE_FIGSIZE: tuple[float, float] = (9.0, 5.6)
 
 # Signal-sweep panels carry no per-panel title (the legend title names the
 # swept parameter instead), so their axis labels and legend read larger than

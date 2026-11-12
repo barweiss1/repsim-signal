@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from typing import Iterator, Mapping
+
 from manifold_repsim.resi.measures import (
     RESI_MEASURE_SPECS,
     manifold_measure_categories,
@@ -359,14 +362,27 @@ MEASURE_LABELS = {
     # convention `d` (degree-centered) and `mc` (mean-centered) already use.
     "MutualKNNTop10": r"$\mathrm{MNN}_{10}$",
     "CKNNATop10": r"$\mathrm{CKNNA}_{10}$",
+    # Ordinal indices, ordered by Euclidean distance; the inner-product
+    # variants are no longer registered, so these carry the plain names.
+    "TSIEuclid": r"$\mathrm{TSI}$",
+    "QSIEuclid": r"$\mathrm{QSI}$",
     "CKArbfSigma02": r"$\mathrm{CKA}_{\mathrm{RBF},0.2}$",
     "CKArbfSigma05": r"$\mathrm{CKA}_{\mathrm{RBF},0.5}$",
+    "CKArbfSigma04": r"$\mathrm{CKA}_{\mathrm{RBF},0.4}$",
+    "CKArbfSigma06": r"$\mathrm{CKA}_{\mathrm{RBF},0.6}$",
+    "CKArbfSigma08": r"$\mathrm{CKA}_{\mathrm{RBF},0.8}$",
+    "CKArbfSigma10": r"$\mathrm{CKA}_{\mathrm{RBF},1}$",
     "RWKArbfSigma05": r"$\mathrm{aRWKA}_{\mathrm{RBF},0.5}$",
     "sRWKArbfSigma05": r"$\mathrm{RWKA}_{\mathrm{RBF},0.5}$",
     "dRWKArbfSigma05": r"$\mathrm{dRWKA}_{\mathrm{RBF},0.5}$",
     "SoftmaxRWKATemp05": r"$\mathrm{RWKA}_{\mathrm{softmax},0.5}$",
     # Signal measures: the area under the sweep of the same kernel's signal.
-    "CKArbfAUC": r"$\mathrm{AUC}(\boldsymbol{s}_\mathrm{CKA})$",
+    # The CKA signal averaged over the log-spaced bandwidth grid, then the same
+    # signal on a sqrt-spaced and a linearly spaced grid.
+    "CKArbfAUC": r"$\mathrm{AUC}_{\mathrm{log}}(\boldsymbol{s}_\mathrm{CKA})$",
+    "CKArbfAUCSqrt": r"$\mathrm{AUC}_{\mathrm{sqrt}}(\boldsymbol{s}_\mathrm{CKA})$",
+    "CKArbfAUCLin": r"$\mathrm{AUC}_{\mathrm{lin}}(\boldsymbol{s}_\mathrm{CKA})$",
+    "CKArbfAUCRerun": r"$\mathrm{AUC}_{\mathrm{log}}^{\mathrm{rerun}}(\boldsymbol{s}_\mathrm{CKA})$",
     "UKArbfAUC": r"$\mathrm{AUC}(\boldsymbol{s}_\mathrm{UKA})$",
     "sRWKArbfAUC": r"$\mathrm{AUC}(\boldsymbol{s}_\mathrm{RWKA})$",
     "dRWKArbfAUC": r"$\mathrm{AUC}(\boldsymbol{s}_\mathrm{dRWKA})$",
@@ -408,6 +424,43 @@ _MEASURE_NAMES_BY_LABEL = {
 }
 
 
+@contextmanager
+def label_overrides(overrides: Mapping[str, str]) -> Iterator[None]:
+    """Temporarily rename measures, so one analysis can label them its own way.
+
+    The dictionaries are changed in place and restored on exit because the
+    table and figure modules read them directly. Each override must name a
+    measure that already has a label and must not collide with another label,
+    which is the same uniqueness the import-time check enforces.
+    """
+    if not overrides:
+        yield
+        return
+    unknown = sorted(name for name in overrides if name not in MEASURE_LABELS)
+    if unknown:
+        raise ValueError(f"measure_labels names unknown measure(s): {unknown}")
+    merged = {**MEASURE_LABELS, **overrides}
+    values = list(merged.values())
+    clashes = sorted({label for label in values if values.count(label) > 1})
+    if clashes:
+        raise ValueError(f"measure_labels produce duplicate labels: {clashes}")
+    saved = dict(MEASURE_LABELS)
+    MEASURE_LABELS.update(overrides)
+    _MEASURE_NAMES_BY_LABEL.clear()
+    _MEASURE_NAMES_BY_LABEL.update(
+        {label: name for name, label in MEASURE_LABELS.items() if label != name}
+    )
+    try:
+        yield
+    finally:
+        MEASURE_LABELS.clear()
+        MEASURE_LABELS.update(saved)
+        _MEASURE_NAMES_BY_LABEL.clear()
+        _MEASURE_NAMES_BY_LABEL.update(
+            {label: name for name, label in saved.items() if label != name}
+        )
+
+
 def measure_label(measure: str) -> str:
     """The display name for a measure, or its own name if it has none."""
     return MEASURE_LABELS.get(str(measure), str(measure))
@@ -430,6 +483,7 @@ __all__ = [
     "MEASURE_CATEGORY_COLORS",
     "MEASURE_CATEGORY_ORDER",
     "MEASURE_LABELS",
+    "label_overrides",
     "BOXEN_BANDS",
     "BOXEN_MEDIAN",
     "BOXEN_WHISKERS",

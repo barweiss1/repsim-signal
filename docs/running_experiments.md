@@ -162,7 +162,10 @@ the environment variables and submission commands.
   `scripts/resi_array_container.sbatch` or
   `scripts/resi_array_native.sbatch`).
 - Reuse a `--run-name` to resume a campaign; use a fresh one after changing
-  tasks, architectures, benchmarks, or measures.
+  tasks, architectures, or benchmarks, or after removing or altering a measure.
+  Adding measures can extend an existing run instead: rerun `prepare` under the
+  same name, resubmit with `--compute-only`, and only the new measures'
+  comparisons are computed (see `docs/resi_cluster.md`).
 - Run `status` and `analyze` on the cluster where the campaign was prepared,
   because generated manifests contain server-absolute paths.
 - `analyze` writes normalized values, per-case ranks, domain summaries, and

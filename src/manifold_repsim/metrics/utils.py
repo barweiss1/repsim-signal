@@ -232,3 +232,32 @@ def remove_outliers(
     if max_threshold is not None:
         max_threshold = max(max_threshold, q_value)
     return feats.clamp(-q_value, q_value)
+
+
+def subsample_representation_pair(
+    feats_a: torch.Tensor,
+    feats_b: torch.Tensor,
+    max_points: int | None,
+    seed: int,
+    minimum: int = 2,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Draw one seeded row subset shared by both representations.
+
+    ``None`` or a cap at least as large as the sample count returns the inputs
+    unchanged, so the cap only ever removes rows. The same seed and sample count
+    always select the same rows.
+    """
+    num_samples = feats_a.shape[0]
+    if max_points is None:
+        return feats_a, feats_b
+    max_points = validate_integer_in_range(
+        max_points,
+        name="max_points",
+        minimum=minimum,
+        maximum=int(np.iinfo(np.int64).max),
+    )
+    if num_samples <= max_points:
+        return feats_a, feats_b
+    rows = np.sort(np.random.RandomState(seed).choice(num_samples, max_points, False))
+    index = torch.as_tensor(rows, dtype=torch.long, device=feats_a.device)
+    return feats_a.index_select(0, index), feats_b.index_select(0, index)

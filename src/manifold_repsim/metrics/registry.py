@@ -71,6 +71,20 @@ METRIC_SPECS = (
         dispatch_kwargs=(("use_distance", True),),
         prepared_family="neighbors",
     ),
+    MetricSpec("tsi", "tsi", prepared_family="ordinal"),
+    MetricSpec("qsi", "qsi", prepared_family="ordinal"),
+    MetricSpec(
+        "tsi_ip",
+        "tsi",
+        dispatch_kwargs=(("use_distance", False),),
+        prepared_family="ordinal",
+    ),
+    MetricSpec(
+        "qsi_ip",
+        "qsi",
+        dispatch_kwargs=(("use_distance", False),),
+        prepared_family="ordinal",
+    ),
     MetricSpec("cka", "cka", reuses_kernel=True, prepared_family="linear_kernel"),
     MetricSpec(
         "cka_rbf",

@@ -20,6 +20,11 @@ from synthetic_datasets.permuted_gaussian_clusters import (
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 PARAMETERS = ("cluster_mixing_probability", "noise_scale", "n_permute")
+
+# Translation distances for the outlier-robustness sweep, in units of the
+# data's own coordinates. The clusters sit on a unit hypersphere, so these
+# span "just outside the data" to "an order of magnitude away".
+DEFAULT_OUTLIER_DISTANCES: tuple[float, ...] = (5.0, 10.0, 20.0, 30.0)
 PARAMETER_LABELS = {
     "cluster_mixing_probability": r"$p_{mix}$",
     "noise_scale": r"$\sigma_{noise}$",
@@ -68,6 +73,15 @@ SCHEMA = {
             "integration": None,
         },
         "signal_sweeps": {"fixed_parameters": {name: None for name in PARAMETERS}},
+        "signal_shapes": {"fixed_parameters": {name: None for name in PARAMETERS}},
+        "outlier_sweep": {
+            "distances": None,
+            "point_index": None,
+            # A bandwidth grid of its own. A translated point only enters the
+            # RBF kernel once the bandwidth is comparable to its distance, so
+            # the sweeps' range would show the signal before it can react.
+            "signals": {"min": None, "max": None, "num": None, "scale": None},
+        },
     },
     "mds": {
         "random_state": None,
@@ -158,15 +172,28 @@ def validate_config(raw: Any) -> dict[str, Any]:
             visualization.setdefault("legend_style", "markers")
         metrics_cfg = config.get("metrics")
         if isinstance(metrics_cfg, dict) and isinstance(base, dict):
-            if not isinstance(metrics_cfg.get("signal_sweeps"), dict):
-                metrics_cfg["signal_sweeps"] = {}
-            if not isinstance(
-                metrics_cfg["signal_sweeps"].get("fixed_parameters"), dict
-            ):
-                metrics_cfg["signal_sweeps"]["fixed_parameters"] = {}
-            fixed_parameters = metrics_cfg["signal_sweeps"]["fixed_parameters"]
-            for name in PARAMETERS:
-                fixed_parameters.setdefault(name, base[name])
+            for section in ("signal_sweeps", "signal_shapes"):
+                if not isinstance(metrics_cfg.get(section), dict):
+                    metrics_cfg[section] = {}
+                if not isinstance(metrics_cfg[section].get("fixed_parameters"), dict):
+                    metrics_cfg[section]["fixed_parameters"] = {}
+                fixed_parameters = metrics_cfg[section]["fixed_parameters"]
+                for name in PARAMETERS:
+                    fixed_parameters.setdefault(name, base[name])
+            if not isinstance(metrics_cfg.get("outlier_sweep"), dict):
+                metrics_cfg["outlier_sweep"] = {}
+            metrics_cfg["outlier_sweep"].setdefault(
+                "distances", list(DEFAULT_OUTLIER_DISTANCES)
+            )
+            metrics_cfg["outlier_sweep"].setdefault("point_index", 0)
+            if not isinstance(metrics_cfg["outlier_sweep"].get("signals"), dict):
+                metrics_cfg["outlier_sweep"]["signals"] = {}
+            shared_signals = metrics_cfg.get("signals")
+            if isinstance(shared_signals, dict):
+                for key in ("min", "max", "num", "scale"):
+                    metrics_cfg["outlier_sweep"]["signals"].setdefault(
+                        key, shared_signals.get(key)
+                    )
     _strict(config, SCHEMA)
     dataset = config["dataset"]
     base = config["base_transform"]
@@ -342,25 +369,57 @@ def validate_config(raw: Any) -> dict[str, Any]:
     )
     require(signals["integration"] == "average", "signals.integration must be average")
 
-    sweep_fixed = config["metrics"]["signal_sweeps"]["fixed_parameters"]
-    for field in ("cluster_mixing_probability", "noise_scale"):
+    # Both sections name one condition each and are validated identically;
+    # neither has to name a level the swept `grid` contains.
+    for section in ("signal_sweeps", "signal_shapes"):
+        section_fixed = config["metrics"][section]["fixed_parameters"]
+        for field in ("cluster_mixing_probability", "noise_scale"):
+            require(
+                isinstance(section_fixed[field], (int, float))
+                and np.isfinite(section_fixed[field])
+                and section_fixed[field] >= 0,
+                f"metrics.{section}.fixed_parameters.{field} must be finite and "
+                "nonnegative",
+            )
         require(
-            isinstance(sweep_fixed[field], (int, float))
-            and np.isfinite(sweep_fixed[field])
-            and sweep_fixed[field] >= 0,
-            f"metrics.signal_sweeps.fixed_parameters.{field} must be finite and "
-            "nonnegative",
+            section_fixed["cluster_mixing_probability"] <= 1,
+            f"metrics.{section}.fixed_parameters mixing must not exceed 1",
+        )
+        require(
+            _is_int(section_fixed["n_permute"])
+            and section_fixed["n_permute"] != 1
+            and section_fixed["n_permute"] <= dataset["n_clusters"],
+            f"metrics.{section}.fixed_parameters.n_permute must be 0 or between "
+            "2 and n_clusters",
+        )
+
+    outlier = config["metrics"]["outlier_sweep"]
+    require(
+        isinstance(outlier["distances"], list) and outlier["distances"],
+        "metrics.outlier_sweep.distances must be a non-empty list",
+    )
+    for distance in outlier["distances"]:
+        require(
+            isinstance(distance, (int, float))
+            and not isinstance(distance, bool)
+            and np.isfinite(distance)
+            and distance > 0,
+            "metrics.outlier_sweep.distances entries must be finite and positive",
         )
     require(
-        sweep_fixed["cluster_mixing_probability"] <= 1,
-        "metrics.signal_sweeps.fixed_parameters mixing must not exceed 1",
+        _is_int(outlier["point_index"])
+        and outlier["point_index"] < dataset["n_points"],
+        "metrics.outlier_sweep.point_index must be a valid point index",
+    )
+    outlier_signals = outlier["signals"]
+    require(
+        0 < outlier_signals["min"] < outlier_signals["max"]
+        and _is_int(outlier_signals["num"], 2),
+        "metrics.outlier_sweep.signals require 0 < min < max and integer num >= 2",
     )
     require(
-        _is_int(sweep_fixed["n_permute"])
-        and sweep_fixed["n_permute"] != 1
-        and sweep_fixed["n_permute"] <= dataset["n_clusters"],
-        "metrics.signal_sweeps.fixed_parameters.n_permute must be 0 or between "
-        "2 and n_clusters",
+        outlier_signals["scale"] in {"log", "linear"},
+        "metrics.outlier_sweep.signals.scale must be log or linear",
     )
 
     for key in ("random_state", "n_init", "max_iter"):

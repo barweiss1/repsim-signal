@@ -46,6 +46,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import numpy as np
 from matplotlib.colors import BoundaryNorm
 from matplotlib.colors import ListedColormap
@@ -55,7 +56,9 @@ from ..paper_style import EMBEDDING_GRID_FIGSIZE
 from ..paper_style import EMBEDDING_GRID_RECT
 from ..paper_style import OPACITY_RANGE
 from ..paper_style import POINT_SIZE_RANGE
+from ..paper_style import SIGNAL_LEGEND_FONTSIZE
 from ..paper_style import SIGNAL_ROW_FIGSIZE
+from ..paper_style import SIGNAL_SHAPE_FIGSIZE
 from ..paper_style import apply_paper_style
 from ..paper_style import discrete_colorbar_panel
 from ..paper_style import legend_panel_metrics
@@ -192,11 +195,25 @@ def plot_data_description(config: dict[str, Any], output_dir: Path) -> None:
             for levels in (np.unique(grid[:, index]) for index in range(3))
         ]
     )
+
+    def single_parameter_target(
+        parameter: str,
+    ) -> tuple[str, tuple[float, float, float]]:
+        """Label and grid point where only `parameter` leaves its base value.
+
+        `moderate` and the grid columns are indexed by `PARAMETERS`' canonical
+        order, so the coordinate is built by canonical position while the
+        panels themselves follow `PAPER_PANEL_ORDER`.
+        """
+        position = PARAMETERS.index(parameter)
+        coordinates = tuple(
+            moderate[index] if index == position else 0.0 for index in range(3)
+        )
+        return parameter_value_label(parameter, moderate[position]), coordinates
+
     targets: tuple[tuple[str, tuple[float, float, float] | None], ...] = (
         ("Base data", None),
-        (parameter_value_label(PARAMETERS[0], moderate[0]), (moderate[0], 0.0, 0.0)),
-        (parameter_value_label(PARAMETERS[1], moderate[1]), (0.0, moderate[1], 0.0)),
-        (parameter_value_label(PARAMETERS[2], moderate[2]), (0.0, 0.0, moderate[2])),
+        *(single_parameter_target(parameter) for parameter in PAPER_PANEL_ORDER),
     )
     examples = [
         (
@@ -220,11 +237,12 @@ def plot_data_description(config: dict[str, Any], output_dir: Path) -> None:
     save_figure(figure, output_dir / "data_description.pdf")
 
 
-# Left-to-right panel order for the signal-sweep row figure (paper
-# convention: sigma, mix, perm) -- independent of `PARAMETERS`' canonical
+# Left-to-right panel order for the paper's parameter-panel figures
+# (convention: sigma, mix, perm) -- independent of `PARAMETERS`' canonical
 # dataset/grid order, which other figures and the dataset column layout
-# still rely on unchanged.
-SIGNAL_SWEEP_PARAMETER_ORDER: tuple[str, ...] = (
+# still rely on unchanged. Shared by `plot_data_description` and
+# `plot_signal_sweep_rows` so the two read in the same order.
+PAPER_PANEL_ORDER: tuple[str, ...] = (
     "noise_scale",
     "cluster_mixing_probability",
     "n_permute",
@@ -244,7 +262,7 @@ def plot_signal_sweep_rows(config: dict[str, Any], output_dir: Path) -> None:
         figure, axes = plt.subplots(
             1, 3, figsize=SIGNAL_ROW_FIGSIZE, constrained_layout=True
         )
-        for axis, parameter in zip(axes, SIGNAL_SWEEP_PARAMETER_ORDER):
+        for axis, parameter in zip(axes, PAPER_PANEL_ORDER):
             curve = curves[parameter]
             sigma = curve["sigma"]
             values = curve["values"]
@@ -257,12 +275,312 @@ def plot_signal_sweep_rows(config: dict[str, Any], output_dir: Path) -> None:
             axes,
             logscale=logscale,
             legend_titles=[
-                PARAMETER_LABELS[parameter]
-                for parameter in SIGNAL_SWEEP_PARAMETER_ORDER
+                PARAMETER_LABELS[parameter] for parameter in PAPER_PANEL_ORDER
             ],
             y_label=SIGNAL_SWEEP_METRIC_LABELS[metric_name],
         )
         save_figure(figure, output_dir / f"signal_sweep_{metric_name}.pdf")
+
+
+# (filename stem, metric id pairs) for `plot_signal_shapes`. Each figure
+# overlays two signal metrics measured on one single comparison, so the
+# reader sees the shape of s(sigma) itself rather than how a sweep moves it.
+# Paired as the paper discusses them: the two kernel-alignment signals, then
+# the two random-walk ones.
+SIGNAL_SHAPE_FIGURES: tuple[tuple[str, tuple[str, str]], ...] = (
+    ("cka_uka", ("cka_rbf", "rbf_uka")),
+    ("rwka_drwka", ("rbf_rwka_symmetric", "rbf_degree_crwka")),
+)
+
+# Colour and marker follow the signal's sigma -> inf limit rather than its
+# position in the pair, so the two signals sharing a limit read alike across
+# both figures: s_CKA with s_dRWKA, and s_UKA with s_RWKA. Keyed off
+# `SIGNAL_INFINITE_LIMIT` below so the pairing cannot drift from the limits
+# actually drawn. These panels are the one place a plain series contrast is
+# wanted rather than a position on the shared magma ramp, which encodes
+# parameter level everywhere else, so the Matplotlib defaults are used and
+# carry no level meaning.
+SIGNAL_SHAPE_STYLE: dict[str, tuple[str, str]] = {
+    "cka_lin": ("tab:blue", "o"),
+    "one": ("tab:orange", "s"),
+}
+
+# Analytic limits of each signal. As sigma -> 0 every signal approaches 1.
+# As sigma -> inf the RBF kernel degenerates toward the linear one, so the
+# plain alignment signals approach linear CKA while the normalized ones
+# approach 1. "cka_lin" is read from that metric's own result artifact at the
+# same comparison rather than hardcoded.
+SIGNAL_ZERO_LIMIT: float = 1.0
+SIGNAL_INFINITE_LIMIT: dict[str, str] = {
+    "cka_rbf": "cka_lin",
+    "rbf_degree_crwka": "cka_lin",
+    "rbf_uka": "one",
+    "rbf_rwka_symmetric": "one",
+}
+
+
+def _signal_shape_fixed(config: dict[str, Any], metric_id: str) -> float:
+    """One fixed metric measured at the shape comparison.
+
+    `analysis.analyze_signal_shapes` measures the configured fixed metrics at
+    its own condition and stores them beside the curves, because that
+    condition need not lie on the swept grid and so has no row in the
+    per-condition result artifacts.
+    """
+    data_dir, _ = output_paths(config)
+    shapes = load_npz(data_dir / ".scratch" / "signal_shapes.npz")
+    return float(shapes[f"fixed_{metric_id}"])
+
+
+def _signal_shape_curves(
+    config: dict[str, Any],
+) -> tuple[np.ndarray, dict[str, np.ndarray]]:
+    """Signal curves for the one comparison the shape figures draw.
+
+    Written by `analysis.analyze_signal_shapes`, which computes its own
+    transform rather than reading the swept grid, so this condition need not
+    be one the grid visits.
+    """
+    data_dir, _ = output_paths(config)
+    shapes = load_npz(data_dir / ".scratch" / "signal_shapes.npz")
+    sigma = np.asarray(shapes["sigma"], dtype=float)
+    curves = {
+        metric: np.asarray(shapes[metric], dtype=float) for metric in SIGNAL_METRICS
+    }
+    return sigma, curves
+
+
+def plot_signal_shapes(config: dict[str, Any], output_dir: Path) -> None:
+    """One figure per metric pair: both signals of a single comparison.
+
+    The sweep figures show how a signal moves as a parameter changes; these
+    show the shape of the signal itself at one fixed, representative
+    comparison, which is what the multiscale argument is actually about.
+    Each signal's two analytic limits are drawn as reference lines, so the
+    plotted range reads against where the curves are heading rather than
+    only against itself.
+    """
+    sigma, curves = _signal_shape_curves(config)
+    logscale = config["metrics"]["signals"]["scale"] == "log"
+    linear_cka = _signal_shape_fixed(config, "cka_lin")
+
+    for stem, metrics in SIGNAL_SHAPE_FIGURES:
+        figure, axis = plt.subplots(
+            figsize=SIGNAL_SHAPE_FIGSIZE, constrained_layout=True
+        )
+        # One line per distinct limit the panel's two metrics actually reach:
+        # `SIGNAL_ZERO_LIMIT` is shared by both, and whichever metric tends to
+        # linear CKA adds that second line.
+        limits: dict[float, str] = {SIGNAL_ZERO_LIMIT: "$1$"}
+        for metric in metrics:
+            if SIGNAL_INFINITE_LIMIT[metric] == "cka_lin":
+                limits[linear_cka] = r"$CKA_{\mathrm{lin}}$"
+        for value, label in limits.items():
+            axis.axhline(value, color="0.45", linestyle="--", linewidth=1.6, zorder=1)
+            axis.annotate(
+                label,
+                xy=(0.015, value),
+                xycoords=axis.get_yaxis_transform(),
+                xytext=(0, -18 if value == SIGNAL_ZERO_LIMIT else 6),
+                textcoords="offset points",
+                fontsize=SIGNAL_LEGEND_FONTSIZE,
+                color="0.35",
+            )
+
+        for metric in metrics:
+            color, marker = SIGNAL_SHAPE_STYLE[SIGNAL_INFINITE_LIMIT[metric]]
+            axis.plot(
+                sigma,
+                curves[metric],
+                marker=marker,
+                markersize=7,
+                color=color,
+                linewidth=2.5,
+                zorder=2,
+                label=SIGNAL_SWEEP_METRIC_LABELS[metric],
+            )
+        # The shared tail does the whole styling job here, legend included:
+        # it already places a lower-left legend and widens the left x-limit
+        # to clear room for it. These panels only differ in carrying no swept
+        # parameter, so the legend goes untitled and names the two signals.
+        style_signal_row(
+            [axis],
+            logscale=logscale,
+            legend_titles=[""],
+            y_label="similarity to base",
+        )
+        # Headroom above 1 so the unit limit reads as its own line rather
+        # than merging into the top spine. Whichever curves actually meet it
+        # -- the signals tending to 1, and any curve reaching the sigma -> 0
+        # limit when the configured range extends far enough down -- have to
+        # stay distinguishable from it.
+        axis.set_ylim(0.0, 1.05)
+        save_figure(figure, output_dir / f"signal_shapes_{stem}.pdf")
+
+
+# Panel order for the outlier figure: the same four signals, in the order
+# the sweep-row figures are written.
+OUTLIER_PANEL_METRICS: tuple[str, ...] = (
+    "cka_rbf",
+    "rbf_uka",
+    "rbf_rwka_symmetric",
+    "rbf_degree_crwka",
+)
+# Not "d": the data dimension is already d throughout the paper.
+OUTLIER_LEGEND_TITLE = r"$\Vert \delta \Vert$"
+
+# Where the sigma -> inf limit is drawn, as a fraction of the swept range
+# past its right end: far enough to read as a separate position, close
+# enough that the dotted continuation still reads as the same curve.
+OUTLIER_LIMIT_GAP: float = 0.07
+
+
+def _outlier_limit_position(sigma: np.ndarray, *, logscale: bool) -> float:
+    """The x position standing in for sigma -> inf, just past the grid."""
+    low, high = float(sigma.min()), float(sigma.max())
+    if logscale:
+        return high * (high / low) ** OUTLIER_LIMIT_GAP
+    return high + (high - low) * OUTLIER_LIMIT_GAP
+
+
+def _swept_bandwidth_ticks(
+    bounds: tuple[float, float],
+    *,
+    logscale: bool,
+) -> tuple[list[float], list[str]]:
+    """Ticks and labels for the swept part of a bandwidth axis.
+
+    Derived from the bounds rather than read back from the axis: before a
+    draw, a log axis reports the strided ticks a locator picks for an
+    unknown tick space, which here would silently drop every other decade.
+    """
+    left, right = bounds
+    if not logscale:
+        locator = ticker.MaxNLocator(nbins="auto", steps=[1, 2, 2.5, 5, 10])
+        ticks = [
+            tick for tick in locator.tick_values(left, right) if left <= tick <= right
+        ]
+        return ticks, [f"{tick:g}" for tick in ticks]
+    exponents = range(int(np.floor(np.log10(left))), int(np.ceil(np.log10(right))) + 1)
+    ticks = [
+        10.0**exponent for exponent in exponents if left <= 10.0**exponent <= right
+    ]
+    return ticks, [rf"$10^{{{int(round(np.log10(tick)))}}}$" for tick in ticks]
+
+
+def _outlier_limit_ticks(
+    axis: plt.Axes,
+    sigma: np.ndarray,
+    position: float,
+    *,
+    logscale: bool,
+) -> None:
+    """Mark the limit position on the x axis as infinity.
+
+    The infinity mark is carried by the minor locator, so it cannot collide
+    with a swept tick. The majors are pinned to the swept range, because the
+    room made for the limit position would otherwise earn a tick of its own
+    and label it as a bandwidth. Clearing the intervening minor ticks keeps
+    the axis from reading as continuous into a position that stands for a
+    limit rather than a value.
+    """
+    left, _ = axis.get_xlim()
+    ticks, labels = _swept_bandwidth_ticks(
+        (left, float(sigma.max())), logscale=logscale
+    )
+    axis.set_xticks(ticks, labels=labels)
+    # Half the gap again past the limit position, so its marker stands clear
+    # of the right spine instead of being bisected by it.
+    high = float(sigma.max())
+    axis.set_xlim(
+        left,
+        (
+            position * (position / high) ** 0.5
+            if logscale
+            else position + (position - high) * 0.5
+        ),
+    )
+    axis.xaxis.set_minor_locator(ticker.FixedLocator([position]))
+    axis.xaxis.set_minor_formatter(ticker.FixedFormatter([r"$\infty$"]))
+    axis.tick_params(
+        axis="x",
+        which="minor",
+        labelsize=plt.rcParams["xtick.labelsize"],
+        length=plt.rcParams["xtick.major.size"],
+    )
+
+
+def plot_outlier_sweep(config: dict[str, Any], output_dir: Path) -> None:
+    """Robustness to a single far-away point, one panel per signal metric.
+
+    An additional figure rather than a fourth panel on the sweep rows: the
+    swept quantity is not one of the dataset's three parameters but a
+    perturbation of the base data against itself, so it reads on its own.
+    Styled through the same tail as those rows, so the two sit together.
+
+    The bandwidth axis is the outlier sweep's own grid, which reaches far
+    past the shared one: the kernel cannot react to the translated point
+    until the bandwidth is comparable to how far it moved.
+    """
+    data_dir, _ = output_paths(config)
+    sweep = load_npz(data_dir / ".scratch" / "outlier_sweep.npz")
+    sigma = np.asarray(sweep["sigma"], dtype=float)
+    distances = np.asarray(sweep["values"], dtype=float)
+    logscale = config["metrics"]["outlier_sweep"]["signals"]["scale"] == "log"
+
+    figure, axes = plt.subplots(
+        1,
+        len(OUTLIER_PANEL_METRICS),
+        figsize=SIGNAL_ROW_FIGSIZE,
+        constrained_layout=True,
+        sharey=True,
+    )
+    linear_cka = np.asarray(sweep["fixed_cka_lin"], dtype=float)
+    colors = magma_ramp(len(distances))
+    limit_position = _outlier_limit_position(sigma, logscale=logscale)
+
+    for axis, metric in zip(axes, OUTLIER_PANEL_METRICS):
+        # Each curve is continued, dotted, to its own sigma -> inf limit at a
+        # position standing for infinity: linear CKA for the plain alignment
+        # signals, 1 for the normalized ones. A continuation rather than a
+        # horizontal rule, so a limit cannot be read against the wrong curve.
+        limits = (
+            linear_cka
+            if SIGNAL_INFINITE_LIMIT[metric] == "cka_lin"
+            else np.full(len(distances), SIGNAL_ZERO_LIMIT)
+        )
+        for distance, color, row, limit in zip(
+            distances, colors, np.asarray(sweep[metric], float), limits
+        ):
+            axis.plot(
+                sigma, row, marker="o", color=color, zorder=2, label=f"{distance:g}"
+            )
+            axis.plot(
+                [sigma[-1], limit_position],
+                [row[-1], limit],
+                linestyle=":",
+                color=color,
+                zorder=2,
+            )
+            # Hollow, so the limit is not mistaken for a swept measurement.
+            axis.plot(
+                [limit_position],
+                [limit],
+                marker="o",
+                color=color,
+                markerfacecolor="white",
+                zorder=2,
+            )
+        axis.set_title(SIGNAL_SWEEP_METRIC_LABELS[metric])
+    style_signal_row(
+        axes,
+        logscale=logscale,
+        legend_titles=[OUTLIER_LEGEND_TITLE] * len(OUTLIER_PANEL_METRICS),
+        y_label="similarity to base",
+    )
+    for axis in axes:
+        _outlier_limit_ticks(axis, sigma, limit_position, logscale=logscale)
+    save_figure(figure, output_dir / "signal_outlier_sweep.pdf")
 
 
 def _paper_encoding_guides(
@@ -408,5 +726,7 @@ def build_all(config: dict[str, Any], output_dir: Path | None = None) -> None:
     apply_paper_style()
     plot_data_description(config, resolved_output_dir)
     plot_signal_sweep_rows(config, resolved_output_dir)
+    plot_signal_shapes(config, resolved_output_dir)
+    plot_outlier_sweep(config, resolved_output_dir)
     for embedding_type in ("base_relative", "direct"):
         plot_mds_grid(config, resolved_output_dir, embedding_type)

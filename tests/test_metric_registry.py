@@ -36,6 +36,8 @@ class MetricRegistryTests(unittest.TestCase):
             "cycle_knn": "manifold_repsim.metrics.neighbors",
             "mutual_knn": "manifold_repsim.metrics.neighbors",
             "cknna": "manifold_repsim.metrics.neighbors",
+            "tsi": "manifold_repsim.metrics.neighbors",
+            "qsi": "manifold_repsim.metrics.neighbors",
             "cka": "manifold_repsim.metrics.kernels",
             "unbiased_cka": "manifold_repsim.metrics.kernels",
             "rbf_uka": "manifold_repsim.metrics.kernels",

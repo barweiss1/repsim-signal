@@ -220,8 +220,91 @@ class TestAnalysisSettingsLoading(unittest.TestCase):
             with self.subTest(config=path.name):
                 settings = load_analysis_settings(path)
                 self.assertEqual(retired & set(settings.measures), set())
-                # 9 native measures plus the 7 manifold ones that remain.
-                self.assertEqual(len(settings.measures), 16)
+                # 9 native measures plus the 11 manifold ones that remain: the
+                # 7 signal and fixed measures, the 2 ordinal indices, and the
+                # 2 extra sampling-grid CKA signals.
+                self.assertEqual(len(settings.measures), 20)
+
+    def test_tsi_qsi_configs_match_the_main_ones_but_for_the_extra_grids(self):
+        """One log-sampled AUC, plainly labelled; everything else as reported."""
+        configs = Path(__file__).resolve().parents[1] / "configs"
+        for domain in ("graph", "vision", "language"):
+            with self.subTest(domain=domain):
+                main = load_analysis_settings(configs / f"resi_{domain}_analysis.yaml")
+                plain = load_analysis_settings(
+                    configs / f"analysis_tsi_qsi_{domain}.yaml"
+                )
+                self.assertEqual(
+                    plain.measures,
+                    tuple(
+                        m
+                        for m in main.measures
+                        if m not in ("CKArbfAUCSqrt", "CKArbfAUCLin")
+                    ),
+                )
+                self.assertEqual(plain.quality_measures, main.quality_measures)
+                self.assertEqual(
+                    plain.exclude_functional_measures, main.exclude_functional_measures
+                )
+                self.assertEqual(
+                    dict(plain.measure_labels),
+                    {"CKArbfAUC": r"$\mathrm{AUC}(\boldsymbol{s}_\mathrm{CKA})$"},
+                )
+                self.assertEqual(main.measure_labels, ())
+
+
+class TestMeasureLabelOverrides(unittest.TestCase):
+    def test_settings_parse_and_snapshot_labels(self):
+        settings = parse_analysis_settings({"measure_labels": {"CKA": "linear CKA"}})
+        self.assertEqual(settings.measure_labels, (("CKA", "linear CKA"),))
+        self.assertEqual(
+            settings_snapshot(settings, None)["measure_labels"], {"CKA": "linear CKA"}
+        )
+        self.assertNotIn("measure_labels", settings_snapshot(AnalysisSettings(), None))
+
+    def test_bad_labels_are_rejected(self):
+        for bad in ({"CKA": ""}, {"CKA": 3}, ["CKA"]):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                parse_analysis_settings({"measure_labels": bad})
+
+    def test_override_applies_inside_and_restores_after(self):
+        from manifold_repsim.resi.analysis.config import (
+            label_overrides,
+            measure_category,
+            measure_label,
+        )
+
+        before = measure_label("CKArbfAUC")
+        with label_overrides({"CKArbfAUC": "plain AUC"}):
+            self.assertEqual(measure_label("CKArbfAUC"), "plain AUC")
+            self.assertEqual(measure_category("plain AUC"), "Signal")
+        self.assertEqual(measure_label("CKArbfAUC"), before)
+        self.assertEqual(measure_category(before), "Signal")
+
+    def test_override_restores_after_an_error_and_rejects_clashes(self):
+        from manifold_repsim.resi.analysis.config import (
+            label_overrides,
+            measure_label,
+        )
+
+        before = measure_label("CKArbfAUC")
+        with self.assertRaises(RuntimeError):
+            with label_overrides({"CKArbfAUC": "x"}):
+                raise RuntimeError("boom")
+        self.assertEqual(measure_label("CKArbfAUC"), before)
+        with self.assertRaisesRegex(ValueError, "unknown"):
+            with label_overrides({"NoSuchMeasure": "x"}):
+                pass
+        with self.assertRaisesRegex(ValueError, "duplicate"):
+            with label_overrides({"CKArbfAUC": measure_label("CKArbfAUCLin")}):
+                pass
+
+    def test_sqrt_grid_is_labelled_with_its_subscript(self):
+        from manifold_repsim.resi.analysis.config import measure_label
+
+        self.assertIn(r"\mathrm{sqrt}", measure_label("CKArbfAUCSqrt"))
+        self.assertIn(r"\mathrm{log}", measure_label("CKArbfAUC"))
+        self.assertIn(r"\mathrm{lin}", measure_label("CKArbfAUCLin"))
 
 
 if __name__ == "__main__":
