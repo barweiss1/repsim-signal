@@ -58,9 +58,10 @@ ReSi campaigns need a separate ReSi checkout and a GPU cluster; see
 [docs/resi_cluster.md](docs/resi_cluster.md). The analysis methodology is
 described in [docs/resi_analysis_methods.md](docs/resi_analysis_methods.md).
 
-The notebooks `synthetic_experiment.ipynb` and
-`synthetic_experiment_calibrated.ipynb` run interactive parameter sweeps over
-the synthetic datasets.
+`synthetic_demo.ipynb` is a short, self-contained demo of the synthetic
+experiment: the Gaussian-mixture base data, its noise, mixing, and
+permutation transformations, and the similarity signals and their AUCs, in
+the paper's figure style. It runs in about a minute on a CPU.
 
 ## Tests
 
